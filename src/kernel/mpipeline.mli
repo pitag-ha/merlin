@@ -25,4 +25,5 @@ val final_config : t -> Mconfig.t
 val typer_result : t -> Mtyper.result
 val typer_errors : t -> exn list
 
-val timing_information : t -> (string * float) list
+val timing_information : t -> (string * Misc.Time.t) list
+val lazy_information : t -> (string * bool) list

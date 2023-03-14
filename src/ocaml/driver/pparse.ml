@@ -48,15 +48,42 @@ let merlin_system_command =
     fun cmd ~cwd ->
       Sys.command (Printf.sprintf "cd %s && %s" (Filename.quote cwd) cmd)
 
-let ppx_commandline cmd fn_in fn_out =
+let _ppx_commandline cmd fn_in fn_out =
   Printf.sprintf "%s %s %s%s"
     cmd (Filename.quote fn_in) (Filename.quote fn_out)
     (if Sys.win32 then "" else " 1>&2")
 
+let new_ppx_commandline cmd fn_in fn_out =
+  Printf.sprintf "%s %s -dump-ast -o %s%s"
+    cmd (Filename.quote fn_in) (Filename.quote fn_out)
+    (if Sys.win32 then "" else " 1>&2")
+
+let new_ppx_commandline_with_parsing _cmd input _fn_out =
+  let _input_string = Misc.string_of_file input in
+  (* TODO: forward merlin's stdin to the child processes stdin*)
+  failwith "todo"
+  (* Printf.sprintf "%s %s -dump-ast -o %s%s"
+    cmd (Filename.quote fn_in) (Filename.quote fn_out)
+    (if Sys.win32 then "" else " 1>&2") *)
+
 let apply_rewriter magic ppx (fn_in, failures) =
   let title = "apply_rewriter" in
   let fn_out = Filename.temp_file "camlppx" "" in
-  let comm = ppx_commandline ppx.workval fn_in fn_out in
+  let comm =
+      (* This gets rid of the [-as-ppx] ppxlib workflow and uses the modern ppxlib workflow instead *)
+      (* TODO: Make sure that this is a ppxlib driver, before doing this. and also: don't do this at all... *)
+    let ppx =
+        let non_as_ppx_workval =
+          (match Std.String.split_on_char ~sep:' ' ppx.Std.workval with
+            | [] -> ppx.workval
+            | binary :: args ->
+              let new_args = List.filter ~f:(fun arg -> not (String.equal arg "-as-ppx") ) args in
+              Std.String.concat ~sep:" " (binary :: new_args))
+        in
+        {ppx with Std.workval = non_as_ppx_workval}
+    in
+    new_ppx_commandline ppx.workval fn_in fn_out
+  in
   log ~title "running %s from directory %S" comm ppx.workdir;
   Logger.log_flush ();
   let failure =
@@ -98,6 +125,66 @@ let apply_rewriter magic ppx (fn_in, failures) =
     Misc.remove_file fn_in;
     (fn_out, failures)
 
+let parse_and_apply_one_rewriter ~ppx =
+  let _title = "apply_rewriter" in
+  let fn_out = Filename.temp_file "camlppx" "" in
+  let _comm =
+      (* This gets rid of the [-as-ppx] ppxlib workflow and uses the modern ppxlib workflow instead *)
+      (* TODO: Make sure that this is a ppxlib driver, before doing this. and also: don't do this at all... *)
+    let ppx =
+        let non_as_ppx_workval =
+          (match Std.String.split_on_char ~sep:' ' ppx.Std.workval with
+            | [] -> ppx.workval
+            | binary :: args ->
+              let new_args = List.filter ~f:(fun arg -> not (String.equal arg "-as-ppx") ) args in
+              Std.String.concat ~sep:" " (binary :: new_args))
+        in
+        {ppx with Std.workval = non_as_ppx_workval}
+    in
+    new_ppx_commandline_with_parsing ppx.workval stdin fn_out
+  in
+  failwith "todo"
+  (* log ~title "running %s from directory %S" comm ppx.workdir;
+  Logger.log_flush ();
+  let failure =
+    let ok = merlin_system_command comm ~cwd:ppx.workdir = 0 in
+    if not ok then Some (CannotRun comm)
+    else if not (Sys.file_exists fn_out) then
+      Some (WrongMagic comm)
+    else
+      (* check magic before passing to the next ppx *)
+      let ic = open_in_bin fn_out in
+      let buffer =
+        try really_input_string ic (String.length magic)
+        with End_of_file -> ""
+      in
+      close_in ic;
+      if buffer <> magic then
+        Some (WrongMagic comm)
+      else
+        None
+  in
+  match failure with
+  | Some err ->
+    Misc.remove_file fn_out;
+    let fallback =
+      let fallback =
+        Filename.concat (Filename.get_temp_dir_name ())
+          ("camlppx.lastfail" ^ string_of_int failures)
+      in
+      match Sys.rename fn_in fallback with
+      | () -> fallback
+      | exception exn ->
+        log ~title "exception while renaming ast: %a"
+          Logger.exn exn;
+        fn_in
+    in
+    report_error err;
+    (fallback, failures + 1)
+  | None ->
+    Misc.remove_file fn_in;
+    (fn_out, failures) *)
+
 let read_ast magic fn =
   let ic = open_in_bin fn in
   try
@@ -119,7 +206,6 @@ let rewrite magic ast ppxs =
       ~f:(apply_rewriter magic) ~init:(write_ast magic ast, 0) ppxs
   in
   read_ast magic fn_out
-
 
 let apply_rewriters_str ~ppx ?(restore = true) ~tool_name ast =
   match ppx with

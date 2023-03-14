@@ -281,10 +281,19 @@ val cut_at : string -> char -> string * string
    @since 4.01
 *)
 
-val time_spent : unit -> float
-(** Returns a more precise measurement of resources usage than
-    Sys.times/Unix.times.
-    Both user and kernel cpu time is accounted.  *)
+module Time : sig
+  type t
+  val initial : unit -> t
+  val sub : t -> t -> t
+  val add : t -> t -> t
+  val time_spent : unit -> t
+    (** Returns a more precise measurement of resources usage than
+      Sys.times/Unix.times.
+      Both user and kernel cpu time is accounted.  *)
+
+  val to_yojson : t -> [> `Assoc of (string * [> `Int of int ]) list ]
+
+end
 
 module String : sig
   include module type of String

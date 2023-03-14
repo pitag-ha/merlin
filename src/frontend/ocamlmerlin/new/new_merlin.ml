@@ -73,7 +73,7 @@ let run = function
       Logger.with_notifications notifications @@ fun () ->
       (* Parse commandline *)
       match begin
-        let start_cpu = Misc.time_spent () in
+        let start_cpu = Misc.Time.time_spent () in
         let start_clock = Unix.gettimeofday () *. 1000. in
         let config, command_args =
           let fails = ref [] in
@@ -87,6 +87,16 @@ let run = function
             Mconfig.({config with merlin = {config.merlin with failures}})
           in
           config, command_args
+        in
+        let config =
+          (* Yay, let's do more of this! xDDDDD *)
+          (* This gets rid of the two extra AST passes for w32 and w60 during the PPX phase *)
+          (* TODOS:
+             - check whether the driver is a ppxlib driver before adding ppxlib specific args
+             - do the things where they belong to instead of here at the merlin entry-point level; e.g. have the build system add the w32 and w60 args in a query-specific (i.e. excluding errors) way; or, if here in merlin, ass these args on a query level and only for non-errors queries *)
+          let ppx_config = config.ocaml.ppx in
+          let new_ppx_config = List.map (fun ppx -> {ppx with Std.workval = (ppx.Std.workval ^ " -deriving-keep-w32=both -deriving-keep-w60=both")}) ppx_config in
+          {config with ocaml = {config.ocaml with ppx = new_ppx_config}}
         in
         (* Start processing query *)
         Logger.with_log_file Mconfig.(config.merlin.log_file)
@@ -117,22 +127,25 @@ let run = function
                 Location.print_main Format.str_formatter err;
                 ("error", `String (Format.flush_str_formatter ()))
           in
-          let cpu_time = Misc.time_spent () -. start_cpu in
+          let cpu_time = Misc.Time.(sub (time_spent ()) start_cpu) in
           let clock_time = Unix.gettimeofday () *. 1000. -. start_clock in
           let timing = Mpipeline.timing_information pipeline in
+          let _lazy = Mpipeline.lazy_information pipeline in
           let pipeline_time =
-            List.fold_left (fun acc (_, k) -> k +. acc) 0.0 timing in
-          let timing = ("clock", clock_time) ::
-                       ("cpu", cpu_time) ::
-                       ("query", (cpu_time -. pipeline_time)) :: timing in
+            List.fold_left (fun acc (_, k) -> Misc.Time.add k acc) (Misc.Time.initial ()) timing in
+          let timing = ("cpu", cpu_time) ::
+                       ("query", (Misc.Time.sub cpu_time pipeline_time)) :: timing in
           let notify { Logger.section; msg } =
             `String (Printf.sprintf "%s: %s" section msg)
           in
-          let format_timing (k,v) = (k, `Int (int_of_float (0.5 +. v))) in
+          let format_clock_time v = ("clock", `Int (int_of_float (0.5 +. v))) in
+          let format_timing (k, v) = (k, Misc.Time.to_yojson v) in
+          let format_lazy (k, v) = (k, `Bool v) in
           `Assoc [
             "class", `String class_; "value", message;
             "notifications", `List (List.rev_map notify !notifications);
-            "timing", `Assoc (List.map format_timing timing)
+            "timing", `Assoc (format_clock_time clock_time :: List.map format_timing timing);
+            "lazy", `Assoc (List.map format_lazy _lazy);
           ]
         in
         log ~title:"run(result)" "%a" Logger.json (fun () -> json);

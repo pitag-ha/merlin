@@ -761,10 +761,45 @@ module Color = struct
       ()
 end
 
-let time_spent () =
-  let open Unix in
-  let t = times () in
-  ((t.tms_utime +. t.tms_stime +. t.tms_cutime +. t.tms_cstime) *. 1000.0)
+module Time = struct
+  type t = { utime : float; stime : float; cutime : float; cstime : float }
+
+  let initial () =
+  {
+    utime = 0.;
+    stime = 0.;
+    cutime = 0.;
+    cstime = 0.;
+  }
+
+  let sub
+    { utime=utime1 ; stime=stime1 ; cutime=cutime1 ; cstime=cstime1 }
+    { utime=utime2 ; stime=stime2 ; cutime=cutime2 ; cstime=cstime2 }
+    = { utime=utime1 -. utime2 ; stime=stime1 -. stime2 ; cutime=cutime1 -. cutime2 ; cstime=cstime1 -. cstime2 }
+
+  let add
+    { utime=utime1 ; stime=stime1 ; cutime=cutime1 ; cstime=cstime1 }
+    { utime=utime2 ; stime=stime2 ; cutime=cutime2 ; cstime=cstime2 }
+    = { utime=utime1 +. utime2 ; stime=stime1 +. stime2 ; cutime=cutime1 +. cutime2 ; cstime=cstime1 +. cstime2 }
+
+  let time_spent () =
+    let open Unix in
+    let t = times () in
+    {utime=t.tms_utime *. 1000.0;
+     stime=t.tms_stime *. 1000.0;
+     cutime=t.tms_cutime *. 1000.0;
+     cstime=t.tms_cstime *. 1000.0; }
+
+  let to_yojson { utime ; stime ; cutime; cstime } =
+     let to_int v =  `Int (int_of_float (0.5 +. v)) in
+     `Assoc [
+      "total", to_int (utime +. stime +. cutime +. cstime);
+      "utime", to_int utime;
+      "stime", to_int stime ;
+      "cutime", to_int cutime;
+      "cstime", to_int cstime; 
+     ]
+end
 
 let normalise_eol s =
   let b = Buffer.create 80 in

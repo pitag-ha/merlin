@@ -11,6 +11,10 @@ val check: t -> t -> bool
     changed. *)
 
 val get: string -> t
-(** [file_id filename] computes an id for the current contents of [filename] *)
+(** [file_id filename] computes an id for the current contents of [filename].
+    Returns a generic id, if the id can't be computed. *)
+
+val get_opt : string -> t Option.t
+(** Same as [get], but returns [None], if the id can't be computed. *)
 
 val with_cache : (unit -> 'a) -> 'a

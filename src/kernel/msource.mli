@@ -5,6 +5,13 @@
 *)
 type t
 
+module Digest : sig
+  type source
+  type t = Digest.t
+  val make : source  -> t
+  val equal : t -> t -> bool
+end with type source := t
+
 (** Making a content from name and contents. *)
 val make : string -> t
 
