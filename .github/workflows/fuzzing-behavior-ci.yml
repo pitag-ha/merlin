@@ -36,7 +36,9 @@ jobs:
 
       # ToDo: rename `merl-an regression` to `merl-an behavior`
       - name: Run Merlin-an
-        run: merl-an regression -p /irmin -s 1 --data=data
+        run: |
+          eval $(opam env)
+          merl-an regression -p /irmin -s 1 --data=data
 
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.5.1
