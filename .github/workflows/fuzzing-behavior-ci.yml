@@ -1,0 +1,48 @@
+name: fuzzing-behavior-ci
+
+# FIXME: using behavior-ci instead of main for testing atm.
+on:
+  pull_request:
+    branches: [ behavior-ci ]
+  push:
+    branches: [ behavior-ci ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v3
+
+      - name: Set up OCaml 4.14.x
+        uses: ocaml/setup-ocaml@v2
+        with:
+          # Version of the OCaml compiler to initialise
+          ocaml-compiler: 4.14.x
+
+      - name: Install Merlin
+        run: opam install . --deps-only --yes
+
+      # ToDo: Can I cache this?
+      - name: Install Merl-an
+        run: opam pin -y merl-an https://github.com/pitag-ha/merl-an.git
+
+      # ToDo: Can I cache this?
+      # FIXME: The script doesn't lock the versions of the Irmin dependencies.
+      - name: Clone and build irmin
+        run: sh ./.github/scripts/setup-irmin.sh
+
+      # ToDo: rename `merl-an regression` to `merl-an behavior`
+      - name: Run Merlin-an
+        run: merl-an regression -p /irmin -s 1 --data=data
+
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.5.1
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Persist data
+        run: |
+          scp -r data pitag-ha@sonja:~/data/
