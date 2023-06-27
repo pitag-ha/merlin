@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail
+set -eu
 
 git clone https://github.com/mirage/irmin.git
 cd irmin
