@@ -23,11 +23,17 @@ jobs:
           ocaml-compiler: 4.14.x
 
       - name: Install Merlin
-        run: opam install . --deps-only --yes
+        run: |
+          eval $(opam env)
+          opam install . --deps-only --yes
+          eval $(opam env)
 
       # ToDo: Can I cache this?
       - name: Install Merl-an
-        run: opam pin -y merl-an https://github.com/pitag-ha/merl-an.git
+        run: |
+          eval $(opam env)
+          opam pin -y merl-an https://github.com/pitag-ha/merl-an.git
+          eval $(opam env)
 
       # ToDo: Can I cache this?
       # FIXME: The script doesn't lock the versions of the Irmin dependencies.
