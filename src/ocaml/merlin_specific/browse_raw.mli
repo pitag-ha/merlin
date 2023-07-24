@@ -91,8 +91,10 @@ type node =
   | Open_declaration         of open_declaration
 
   | Method_call              of expression * meth * Location.t
-  | Record_field             of [ `Expression of expression | `Pattern of pattern ] *
-                                Types.label_description * Location.t
+  | Record_field             of [ `Expression of expression
+                                | `Pattern of pattern ]
+                                * Types.label_description
+                                * Longident.t Location.loc
   | Module_binding_name      of module_binding
   | Module_declaration_name  of module_declaration
   | Module_type_declaration_name of module_type_declaration
@@ -109,6 +111,7 @@ val node_attributes : node -> attribute list
 val string_of_node : node -> string
 
 val node_paths : node -> Path.t Location.loc list
+val node_paths_and_longident : node -> (Path.t Location.loc * Longident.t) list
 
 val node_is_constructor : node ->
   [ `Description of Types.constructor_description
@@ -116,4 +119,8 @@ val node_is_constructor : node ->
 
 val node_of_binary_part : Env.t -> Cmt_format.binary_part -> node
 
-val all_holes : Env.t * node -> (Location.t * Env.t * Types.type_expr) list
+val all_holes :
+  Env.t * node ->
+  (Location.t *
+    Env.t *
+    [`Exp of Types.type_expr | `Mod of Types.module_type]) list

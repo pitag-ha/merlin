@@ -367,6 +367,7 @@ let exp_extra sub (extra, loc, attrs) sexp =
         Pexp_constraint (sexp, sub.typ sub cty)
     | Texp_poly cto -> Pexp_poly (sexp, Option.map (sub.typ sub) cto)
     | Texp_newtype s -> Pexp_newtype (mkloc s loc, sexp)
+    | Texp_newtype' (_id, label_loc) -> Pexp_newtype (label_loc, sexp)
   in
   Exp.mk ~loc ~attrs desc
 
@@ -657,6 +658,7 @@ let module_expr sub mexpr =
           | Tmod_unpack (exp, _pack) ->
               Pmod_unpack (sub.expr sub exp)
               (* TODO , sub.package_type sub pack) *)
+          | Tmod_hole -> Pmod_hole
         in
         Mod.mk ~loc ~attrs desc
 

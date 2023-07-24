@@ -303,7 +303,9 @@ and expression_extra i ppf x attrs =
       attributes i ppf attrs;
       option i core_type ppf cto;
   | Texp_newtype s ->
-      line i ppf "Texp_newtype \"%s\"\n" s;
+    line i ppf "Texp_newtype \"%s\"\n" s;
+  | Texp_newtype' (id, _) ->
+      line i ppf "Texp_newtype' \"%a\"\n" fmt_ident id;
       attributes i ppf attrs;
 
 and expression i ppf x =
@@ -783,6 +785,7 @@ and module_expr i ppf x =
   let i = i+1 in
   match x.mod_desc with
   | Tmod_ident (li,_) -> line i ppf "Tmod_ident %a\n" fmt_path li;
+  | Tmod_hole -> line i ppf "Tmod_hole\n";
   | Tmod_structure (s) ->
       line i ppf "Tmod_structure\n";
       structure i ppf s;

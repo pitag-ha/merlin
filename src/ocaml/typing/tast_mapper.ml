@@ -236,6 +236,7 @@ let expr sub x =
     | Texp_coerce (cty1, cty2) ->
         Texp_coerce (Option.map (sub.typ sub) cty1, sub.typ sub cty2)
     | Texp_newtype _ as d -> d
+    | Texp_newtype' _ as d -> d
     | Texp_poly cto -> Texp_poly (Option.map (sub.typ sub) cto)
   in
   let exp_extra = List.map (tuple3 extra id id) x.exp_extra in
@@ -488,6 +489,7 @@ let module_expr sub x =
   let mod_desc =
     match x.mod_desc with
     | Tmod_ident _ as d -> d
+    | Tmod_hole -> Tmod_hole
     | Tmod_structure st -> Tmod_structure (sub.structure sub st)
     | Tmod_functor (arg, mexpr) ->
         Tmod_functor (functor_parameter sub arg, sub.module_expr sub mexpr)

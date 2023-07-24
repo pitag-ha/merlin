@@ -480,34 +480,7 @@ let dispatch pipeline (type a) : a Query_protocol.t -> a =
   | Refactor_open (mode, pos) ->
     let typer = Mpipeline.typer_result pipeline in
     let pos = Mpipeline.get_lexing_pos pipeline pos in
-    begin match Mbrowse.select_open_node (Mtyper.node_at typer pos) with
-      | None | Some (_, []) -> []
-      | Some (path, ((_, node) :: _)) ->
-        let paths =
-          Browse_tree.all_occurrences_of_prefix ~strict_prefix:true path node in
-        let paths = List.concat_map ~f:snd paths in
-        let rec path_to_string acc (p : Path.t) =
-          match p with
-          | Pident ident ->
-            String.concat ~sep:"." (Ident.name ident :: acc)
-          | Pdot (path', s) when
-              mode = `Unqualify && Path.same path path' ->
-            String.concat ~sep:"." (s :: acc)
-          | Pdot (path', s) ->
-            path_to_string (s :: acc) path'
-          | _ -> raise Not_found
-        in
-        List.filter_map paths ~f:(fun {Location. txt = path; loc} ->
-            if not loc.Location.loc_ghost &&
-               Location_aux.compare_pos pos loc <= 0 then
-              try Some (path_to_string [] path, loc)
-              with Not_found -> None
-            else None
-          )
-        |> List.sort
-          ~cmp:(fun (_,l1) (_,l2) ->
-              Lexing.compare_pos l1.Location.loc_start l2.Location.loc_start)
-    end
+    Refactor_open.get_rewrites ~mode typer pos
 
   | Document (patho, pos) ->
     let typer = Mpipeline.typer_result pipeline in
@@ -622,16 +595,51 @@ let dispatch pipeline (type a) : a Query_protocol.t -> a =
     let verbosity = verbosity pipeline in
     let nodes = Mbrowse.of_typedtree (Mtyper.get_typedtree typer) in
     let ppf = Format.str_formatter in
+    let print ~nodes loc env type_ () =
+      match type_ with
+      | `Exp type_expr ->
+        Type_utils.print_type_with_decl ~verbosity env ppf type_expr
+      | `Mod module_type ->
+        (* For module_expr holes we need the type of the next enclosing
+          to get a useful result *)
+        match Mbrowse.enclosing (loc.Location.loc_start) [nodes] with
+        | _ :: (_, Browse_raw.Module_expr { mod_type; _}) :: _ ->
+          Printtyp.modtype env ppf mod_type
+        | _ ->
+          Printtyp.modtype env ppf module_type
+    in
     let loc_and_types_of_holes node =
-      List.map (Browse_raw.all_holes node)
-        ~f:(fun (loc, env, type_expr) ->
+      List.map (Browse_raw.all_holes node) ~f:(
+        fun (loc, env, type_) ->
           Printtyp.wrap_printing_env env ~verbosity
-            (fun () ->
-              Type_utils.print_type_with_decl ~verbosity env ppf type_expr);
-          (loc, Format.flush_str_formatter ())
-        )
+            (print ~nodes loc env type_);
+          (loc, Format.flush_str_formatter ()))
     in
     List.concat_map ~f:loc_and_types_of_holes nodes
+
+  | Construct (pos, with_values, depth) ->
+    let values_scope = match with_values with
+      | Some `None | None -> Construct.Null
+      | Some `Local -> Construct.Local
+    in
+    let keywords = Mpipeline.reader_lexer_keywords pipeline in
+    let typer = Mpipeline.typer_result pipeline in
+    let typedtree = Mtyper.get_typedtree typer in
+    let pos = Mpipeline.get_lexing_pos pipeline pos in
+    let structures = Mbrowse.enclosing pos
+      [Mbrowse.of_typedtree typedtree] in
+    begin match structures with
+    | (_, (Browse_raw.Module_expr { mod_desc = Tmod_hole; _ } as node_for_loc))
+      :: (_, node) :: parents ->
+        let loc = Mbrowse.node_loc node_for_loc in
+        (loc, Construct.node ~keywords ?depth ~values_scope node)
+    | (_,  (Browse_raw.Expression { exp_desc = Texp_hole; _ } as node))
+      :: parents ->
+      let loc = Mbrowse.node_loc node in
+      (loc, Construct.node ~keywords ?depth ~values_scope node)
+    | (_, node) :: _ -> raise Construct.Not_a_hole
+    | [] -> raise No_nodes
+    end
 
   | Outline ->
     let typer = Mpipeline.typer_result pipeline in
@@ -776,24 +784,22 @@ let dispatch pipeline (type a) : a Query_protocol.t -> a =
     let typer = Mpipeline.typer_result pipeline in
     let str = Mbrowse.of_typedtree (Mtyper.get_typedtree typer) in
     let pos = Mpipeline.get_lexing_pos pipeline pos in
-    let tnode =
-      let should_ignore_tnode = function
+    let enclosing = Mbrowse.enclosing pos [str] in
+    let curr_node =
+      let is_wildcard_pat = function
         | Browse_raw.Pattern {pat_desc = Typedtree.Tpat_any; _} -> true
         | _ -> false
       in
-      let rec find = function
-        | [] -> Browse_tree.dummy
-        | (env, node)::rest ->
-          if should_ignore_tnode node
-          then find rest
-          else Browse_tree.of_node ~env node
-      in
-      find (Mbrowse.enclosing pos [str])
+      List.find_some enclosing ~f:(fun (_, node) -> 
+        (* it doesn't make sense to find occurrences of a wildcard pattern *)
+        not (is_wildcard_pat node))
+      |> Option.map ~f:(fun (env, node) -> Browse_tree.of_node ~env node)
+      |> Option.value ~default:Browse_tree.dummy
     in
     let str = Browse_tree.of_browse str in
     let get_loc {Location.txt = _; loc} = loc in
     let ident_occurrence () =
-      let paths = Browse_raw.node_paths tnode.Browse_tree.t_node in
+      let paths = Browse_raw.node_paths curr_node.Browse_tree.t_node in
       let under_cursor p = Location_aux.compare_pos pos (get_loc p) = 0 in
       Logger.log ~section:"occurrences" ~title:"Occurrences paths" "%a"
         Logger.json (fun () ->
@@ -816,13 +822,14 @@ let dispatch pipeline (type a) : a Query_protocol.t -> a =
         let loc (_t,paths) = List.map ~f:get_loc paths in
         List.concat_map ~f:loc ts
 
-    and constructor_occurrence d =
-      let ts = Browse_tree.all_constructor_occurrences (tnode,d) str in
+    in
+    let constructor_occurrence d =
+      let ts = Browse_tree.all_constructor_occurrences (curr_node,d) str in
       List.map ~f:get_loc ts
 
     in
     let locs =
-      match Browse_raw.node_is_constructor tnode.Browse_tree.t_node with
+      match Browse_raw.node_is_constructor curr_node.Browse_tree.t_node with
       | Some d -> constructor_occurrence d.Location.txt
       | None -> ident_occurrence ()
     in

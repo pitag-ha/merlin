@@ -416,7 +416,7 @@ and pattern_or ctxt f x =
   match left_associative x [] with
   | [] -> assert false
   | [x] -> pattern1 ctxt f x
-  | orpats -> 
+  | orpats ->
       pp f "@[<hov0>%a@]" (list ~sep:"@ |" (pattern1 ctxt)) orpats
 
 and pattern1 ctxt (f:Format.formatter) (x:pattern) : unit =
@@ -600,6 +600,12 @@ and sugar_expr ctxt f e =
     end
   | _ -> false
 
+and uncurry params e =
+  match e.pexp_desc with
+  | Pexp_fun (l, e0, p, e) ->
+    uncurry ((l, e0, p) :: params) e
+  | _ -> List.rev params, e
+
 and expression ctxt f x =
   if x.pexp_attributes <> [] then
     pp f "((%a)@,%a)" (expression ctxt) {x with pexp_attributes=[]}
@@ -616,9 +622,10 @@ and expression ctxt f x =
         when ctxt.semi ->
         paren true (expression reset_ctxt) f x
     | Pexp_fun (l, e0, p, e) ->
+        let params, body = uncurry [l, e0, p] e in
         pp f "@[<2>fun@;%a->@;%a@]"
-          (label_exp ctxt) (l, e0, p)
-          (expression ctxt) e
+          (pp_print_list (label_exp ctxt)) params
+          (expression ctxt) body
     | Pexp_newtype (lid, e) ->
         pp f "@[<2>fun@;(type@;%s)@;->@;%a@]" lid.txt
           (expression ctxt) e
@@ -1208,6 +1215,8 @@ and module_expr ctxt f x =
     | Pmod_unpack e ->
         pp f "(val@ %a)" (expression ctxt) e
     | Pmod_extension e -> extension ctxt f e
+    | Pmod_hole ->
+        pp f "_"
 
 and structure ctxt f x = list ~sep:"@\n" (structure_item ctxt) f x
 
@@ -1669,6 +1678,7 @@ let pattern = pattern reset_ctxt
 let signature = signature reset_ctxt
 let structure = structure reset_ctxt
 let case_list = case_list reset_ctxt
+let module_ = module_expr reset_ctxt
 
 let prepare_error err =
   let source = Location.Parser in

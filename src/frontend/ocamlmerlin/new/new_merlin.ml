@@ -107,6 +107,8 @@ let run =
             | result ->
               ("return", result)
             | exception (Failure str) ->
+              let trace = Printexc.get_backtrace () in
+              log ~title:"run" "Command error backtrace: %s" trace;
               ("failure", `String str)
             | exception exn ->
               let trace = Printexc.get_backtrace () in

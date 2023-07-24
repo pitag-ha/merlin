@@ -183,6 +183,7 @@ let expr sub {exp_extra; exp_desc; exp_env; _} =
         Option.iter (sub.typ sub) cty1;
         sub.typ sub cty2
     | Texp_newtype _ -> ()
+    | Texp_newtype' _ -> ()
     | Texp_poly cto -> Option.iter (sub.typ sub) cto
   in
   List.iter (fun (e, _, _) -> extra e) exp_extra;
@@ -338,7 +339,7 @@ let module_coercion sub = function
 let module_expr sub {mod_desc; mod_env; _} =
   sub.env sub mod_env;
   match mod_desc with
-  | Tmod_ident _      -> ()
+  | Tmod_ident _ | Tmod_hole  -> ()
   | Tmod_structure st -> sub.structure sub st
   | Tmod_functor (arg, mexpr) ->
       functor_parameter sub arg;

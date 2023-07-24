@@ -94,6 +94,7 @@ and exp_extra =
   | Texp_coerce of core_type option * core_type
   | Texp_poly of core_type option
   | Texp_newtype of string
+  | Texp_newtype' of Ident.t * label loc
 
 and expression_desc =
     Texp_ident of Path.t * Longident.t loc * Types.value_description
@@ -254,6 +255,7 @@ and module_expr_desc =
   | Tmod_constraint of
       module_expr * Types.module_type * module_type_constraint * module_coercion
   | Tmod_unpack of expression * Types.module_type
+  | Tmod_hole
 
 and structure = {
   str_items : structure_item list;

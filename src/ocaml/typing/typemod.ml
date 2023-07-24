@@ -119,6 +119,7 @@ let rec path_concat head p =
 let extract_sig env loc mty =
   match Env.scrape_alias env mty with
     Mty_signature sg -> sg
+  | Mty_for_hole -> []
   | Mty_alias path ->
       raise(Error(loc, env, Cannot_scrape_alias path))
   | _ -> raise(Error(loc, env, Signature_expected))
@@ -126,6 +127,7 @@ let extract_sig env loc mty =
 let extract_sig_open env loc mty =
   match Env.scrape_alias env mty with
     Mty_signature sg -> sg
+  | Mty_for_hole -> []
   | Mty_alias path ->
       raise(Error(loc, env, Cannot_scrape_alias path))
   | mty -> raise(Error(loc, env, Structure_expected mty))
@@ -155,7 +157,7 @@ let initial_env ~loc ~safe_string ~initially_opened_module
     try
       snd (type_open_ Override env lid.loc lid)
     with
-    | (Typetexp.Error _ | Env.Error _ | Magic_numbers.Cmi.Error _) as exn ->
+    | (Typetexp.Error _ | Env.Error _ | Magic_numbers.Cmi.Error _ | Persistent_env.Error _) as exn ->
       Msupport.raise_error exn;
       env
     | exn ->
@@ -244,21 +246,28 @@ let check_recmod_typedecls env decls =
 
 (* Merge one "with" constraint in a signature *)
 
-let rec add_rec_types env = function
-    Sig_type(id, decl, Trec_next, _) :: rem ->
-      add_rec_types (Env.add_type ~check:true id decl env) rem
-  | _ -> env
-
-let check_type_decl env loc id row_id newdecl decl rs rem =
-  let env = Env.add_type ~check:true id newdecl env in
-  let env =
+let check_type_decl env loc id row_id newdecl decl =
+  let fresh_id = Ident.rename id in
+  let path = Pident fresh_id in
+  let sub = Subst.add_type id path Subst.identity in
+  let fresh_row_id, sub =
     match row_id with
-    | None -> env
-    | Some id -> Env.add_type ~check:false id newdecl env
+    | None -> None, sub
+    | Some id ->
+      let fresh_row_id = Some (Ident.rename id) in
+      let sub = Subst.add_type id (Pident fresh_id) sub in
+      fresh_row_id, sub
   in
-  let env = if rs = Trec_not then env else add_rec_types env rem in
-  Includemod.type_declarations ~mark:Mark_both ~loc env id newdecl decl;
-  Typedecl.check_coherence env loc (Path.Pident id) newdecl
+  let newdecl = Subst.type_declaration sub newdecl in
+  let decl = Subst.type_declaration sub decl in
+  let env = Env.add_type ~check:false fresh_id newdecl env in
+  let env =
+    match fresh_row_id with
+    | None -> env
+    | Some fresh_row_id -> Env.add_type ~check:false fresh_row_id newdecl env
+  in
+  Includemod.type_declarations ~mark:Mark_both ~loc env fresh_id newdecl decl;
+  Typedecl.check_coherence env loc path newdecl
 
 let update_rec_next rs rem =
   match rs with
@@ -513,7 +522,7 @@ let merge_constraint initial_env remove_aliases loc sg constr =
           Typedecl.transl_with_constraint id (Some(Pident id_row))
             ~sig_env ~sig_decl:decl ~outer_env:initial_env sdecl in
         let newdecl = tdecl.typ_type in
-        check_type_decl sig_env sdecl.ptype_loc id row_id newdecl decl rs rem;
+        check_type_decl sig_env sdecl.ptype_loc id row_id newdecl decl;
         let decl_row = {decl_row with type_params = newdecl.type_params} in
         let rs' = if rs = Trec_first then Trec_not else rs in
         (Pident id, lid, Twith_type tdecl),
@@ -527,7 +536,7 @@ let merge_constraint initial_env remove_aliases loc sg constr =
           Typedecl.transl_with_constraint id None
             ~sig_env ~sig_decl ~outer_env:initial_env sdecl in
         let newdecl = tdecl.typ_type and loc = sdecl.ptype_loc in
-        check_type_decl sig_env loc id row_id newdecl sig_decl rs rem;
+        check_type_decl sig_env loc id row_id newdecl sig_decl;
         begin match constr with
           Pwith_type _ ->
             (Pident id, lid, Twith_type tdecl),
@@ -1727,6 +1736,7 @@ let path_of_module mexp =
 let rec closed_modtype env = function
     Mty_ident _ -> true
   | Mty_alias _ -> true
+  | Mty_for_hole -> true
   | Mty_signature sg ->
       let env = Env.add_signature sg env in
       List.for_all (closed_signature_item env) sg
@@ -1932,6 +1942,7 @@ and package_constraints env loc mty constrs =
     | Mty_signature sg ->
         Mty_signature (package_constraints_sig env loc sg constrs)
     | Mty_functor _ | Mty_alias _ -> assert false
+    | Mty_for_hole -> Mty_for_hole
     | Mty_ident p -> raise(Error(loc, env, Cannot_scrape_package_type p))
   end
 
@@ -2154,14 +2165,29 @@ and type_module_aux ~alias sttn funct_body anchor env smod =
       end
   | Pmod_constraint(sarg, smty) ->
       let arg = type_module ~alias true funct_body anchor env sarg in
-      let mty = transl_modtype env smty in
-      let md =
-        wrap_constraint env true arg mty.mty_type (Tmodtype_explicit mty)
-      in
-      { md with
-        mod_loc = smod.pmod_loc;
-        mod_attributes = smod.pmod_attributes;
-      }
+      begin try 
+        let mty = transl_modtype env smty in
+        let md =
+          wrap_constraint env true arg mty.mty_type (Tmodtype_explicit mty)
+        in
+        { md with
+          mod_loc = smod.pmod_loc;
+          mod_attributes = smod.pmod_attributes;
+        }
+      with exn -> 
+       (* [merlin] For better Construct error messages we need to keep holes
+          in the recovered typedtree *)
+        if sarg.pmod_desc = Pmod_hole then begin
+          Msupport.raise_error exn;
+          { 
+            mod_desc = Tmod_hole;
+            mod_type = Mty_for_hole;
+            mod_loc = sarg.pmod_loc;
+            mod_env = env;
+            mod_attributes = sarg.pmod_attributes;
+          } end
+        else raise exn
+      end
 
   | Pmod_unpack sexp ->
       if !Clflags.principal then Ctype.begin_def ();
@@ -2197,6 +2223,12 @@ and type_module_aux ~alias sttn funct_body anchor env smod =
         mod_loc = smod.pmod_loc }
   | Pmod_extension ext ->
       raise (Error_forward (Builtin_attributes.error_of_extension ext))
+  | Pmod_hole ->
+      { mod_desc = Tmod_hole;
+        mod_type = Mty_for_hole;
+        mod_env = env;
+        mod_attributes = smod.pmod_attributes;
+        mod_loc = smod.pmod_loc }
 
 and type_open_decl ?used_slot ?toplevel funct_body names env sod =
   Builtin_attributes.warning_scope sod.popen_attributes
@@ -2601,7 +2633,8 @@ let transl_signature env sg = transl_signature env sg
 
 let rec normalize_modtype = function
     Mty_ident _
-  | Mty_alias _ -> ()
+  | Mty_alias _
+  | Mty_for_hole -> ()
   | Mty_signature sg -> normalize_signature sg
   | Mty_functor(_param, body) -> normalize_modtype body
 

@@ -1,11 +1,68 @@
-git version
-===========
+merlin 4.4
+==========
+Mon Jul 26 11:12:21 PM CET 2021
 
   + merlin binary
-    - recover ill-typed patterns (#1317)
+    - Mbrowse.select_leaf: correctly ignore merlin.hide (#1376)
+    - enable `occurences` to work when looking for locally abstract types
+      (#1382)
+    - handle `-alert` compiler flag (#1401)
+    - avoid a race condition when the process started to read a configuration
+      file crashes/is not found (#1378, @antalsz)
+    - log the backtrace even when the exception is a Failure (#1377, @antalsz)
+    - ignore `-error-style` compiler flag (#1402, @nojb)
+    - fix handling of record field expressions (#1375)
+    - allow -pp to return an AST (#1394)
+    - fix merlin crashing due to short-paths (#1334, fixes #1322)
+  + editor modes
+    - update quick setup instructions for emacs (#1380, @ScriptDevil)
+  + test suite
+    - improve record field destruction testing (#1375)
+
+merlin 4.3.1
+============
+Mon Jul 26 04:45:37 PM CET 2021
+
+  + merlin binary
+    - recover ill-typed patterns (#1317, #1342)
     - more accurate type-enclosing for methods (#1328, fixes #1124)
-    - fix location of patterns in Occurrences (#1324, fixes
-      ocaml/ocaml-lsp#375)
+    - fix location of patterns in Occurrences (#1324, fixes ocaml/ocaml-lsp#375)
+    - fix location of module definitions done via functors (#1329, fixes #1199)
+    - fix -cmt-path dirs mistakenly added to build path (#1330)
+    - add new module holes that can replace module expressions (#1333)
+    - add a new command `construct` that builds a list of possible terms when
+      called on a typed hole (#1318)
+    - `refactor-open` improvements (#1313, #1314, #1366, #1372)
+      - do not make paths absolute, simply prefix with the identifier under
+      the cursor
+        ```ocaml
+        open Foo (* calling refactor-open qualify on this open *)
+        let _ = Foo.bar (* previously could result in [Dune__exe.Foo.bar] *)
+        ```
+      - do not return identical (duplicate) edits
+      - do not return unnecessary edits that when applied do not change
+        the document
+      - handle record fields properly
+      - handle multi-line paths
+      - `unqualify` should not qualify
+    - Handle `Persistent_env.Error` in `Typemod.initial_env` (#1355)
+    - locate: reset global state from all entry points (#1364)
+    - Windows: replace user name by its SID in socketnames (#1345, @ttamttam)
+  + editor modes
+    - vim: add a simple interface to the new `construct` command:
+      `MerlinConstruct`. When several results are suggested, `<c-i>`
+      and `<c-u>` can be use to change the depth of the recursive
+      construction. (#1318)
+    - vim: add support for the `merlin-locate-type` command:
+      `MerlinLocateType` (#1359)
+    - emacs: add a simple interface to the new `construct` command:
+      `merlin-construct`. (#1352)
+    - emacs: add support for the `merlin-locate-type` command. (#1359)
+    - emacs: fix issue with `merlin--highlight` and  various minor improvements
+        (#1367, @mattiase)
+  + test suite
+    - cover the new `construct` command (#1318)
+    - disable tests failing in Opam's CI due to nested dune projects (#1373)
     - fix location of module definitions done via functors (#1329, fixes #1199)
 
 merlin 4.2

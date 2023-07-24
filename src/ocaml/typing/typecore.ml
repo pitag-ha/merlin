@@ -1420,7 +1420,7 @@ let rec type_pat
        try
          type_pat_aux category ~no_existentials ~mode
            ~env sp expected_ty k
-       with Error _ as exn ->
+       with Error _ as exn when mode = Normal ->
          (* We only want to catch error, not internal exceptions such as
             [Need_backtrack], etc. *)
          Msupport.erroneous_type_register expected_ty;
@@ -2284,7 +2284,8 @@ let rec is_nonexpansive exp =
 and is_nonexpansive_mod mexp =
   match mexp.mod_desc with
   | Tmod_ident _
-  | Tmod_functor _ -> true
+  | Tmod_functor _
+  | Tmod_hole -> true
   | Tmod_unpack (e, _) -> is_nonexpansive e
   | Tmod_constraint (m, _, _, _) -> is_nonexpansive_mod m
   | Tmod_structure str ->
@@ -3678,7 +3679,7 @@ and type_expect_
       in
       re { exp with exp_extra =
              (Texp_poly cty, loc, sexp.pexp_attributes) :: exp.exp_extra }
-  | Pexp_newtype({txt=name}, sbody) ->
+  | Pexp_newtype({txt=name} as label_loc, sbody) ->
       let ty =
         if Typetexp.valid_tyvar_name name then
           newvar ~name ()
@@ -3732,7 +3733,7 @@ and type_expect_
          any new extra node in the typed AST. *)
       rue { body with exp_loc = loc; exp_type = ety;
             exp_extra =
-            (Texp_newtype name, loc, sexp.pexp_attributes) :: body.exp_extra }
+            (Texp_newtype' (id, label_loc), loc, sexp.pexp_attributes) :: body.exp_extra }
   | Pexp_pack m ->
       let (p, nl) =
         match Ctype.expand_head env (instance ty_expected) with
