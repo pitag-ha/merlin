@@ -562,7 +562,7 @@ endfunction
 
 function! merlin#ConstructDone()
   if b:merlin_construct_done
-    " After the subtitution we try to go to the the next hole
+    " After the substitution we try to go to the the next hole
     " TODO Don't if no substitution happened and rewrite the hole
     call setpos('.', b:construct_saved_pos)
     let start_line = b:construct_saved_pos[1]
@@ -854,7 +854,10 @@ function! merlin#GotoDotMerlin()
 endfunction
 
 function! merlin#FindBinary()
-  if !has_key(s:c, 'ocamlmerlin_path') && has_key(s:c, 'merlin_home') && has_key(s:c, 'merlin_parent')
+  if !has_key(s:c, 'ocamlmerlin_path')
+    if !has_key(s:c, 'merlin_home') || !has_key(s:c, 'merlin_parent')
+      runtime plugin/merlin.vim
+    endif
     let s:choices = map(['ocamlmerlin','ocamlmerlin.native'], 's:c.merlin_parent."/bin/".v:val') + map(['ocamlmerlin','ocamlmerlin.native'], 's:c.merlin_home."/".v:val')
     let s:available_choices = filter(s:choices, 'filereadable(v:val)')
     if len(s:available_choices) > 0

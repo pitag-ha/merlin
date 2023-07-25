@@ -286,7 +286,7 @@ let json_of_response notifications response =
 
 let request_of_json = function
   | `Assoc _ as json ->
-    let open Json.Util in
+    let open Yojson.Basic.Util in
     let document =
       let value = member "document" json in
       let value =
@@ -299,7 +299,7 @@ let request_of_json = function
       else Some (to_list value |> document_of_json)
     in
     let printer_width = member "printer_width" json |> to_int_option in
-    let printer_verbosity = member "printer_verbosity" json |> to_int_option in
+    let printer_verbosity = member "printer_verbosity" json |> to_string_option in
     let context = {Context. document; printer_verbosity; printer_width} in
     let query = member "query" json |> to_list in
     request_of_json context query
@@ -314,10 +314,9 @@ let make_json ?(on_read=ignore) ~input ~output () =
       read buf len
   in
   let lexbuf  = Lexing.from_function read in
-  let input   = Json.stream_from_lexbuf (Json.init_lexer ()) lexbuf in
-  let input () = try Some (Stream.next input) with Stream.Failure -> None in
+  let input   = Seq.to_dispenser (Yojson.Basic.(seq_from_lexbuf (init_lexer ()) lexbuf)) in
   let output  = Unix.out_channel_of_descr output in
-  let output' = Json.to_channel output in
+  let output' = Yojson.Basic.to_channel output in
   let output json =
     output' json;
     output_char output '\n';

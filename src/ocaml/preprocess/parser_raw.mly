@@ -244,9 +244,11 @@ let mkpat_opt_constraint ~loc p = function
 let not_expecting loc nonterm =
   raise_error Syntaxerr.(Error(Not_expecting(make_loc loc, nonterm)))
 
+(*
 let unclosed opening_name opening_loc closing_name closing_loc =
   raise(Syntaxerr.Error(Syntaxerr.Unclosed(make_loc opening_loc, opening_name,
                                            make_loc closing_loc, closing_name)))
+*)
 
 let expecting loc nonterm =
     raise_error Syntaxerr.(Error(Expecting(make_loc loc, nonterm)))
@@ -373,9 +375,11 @@ let mk_indexop_expr array_indexing_operator ~loc
   let args = (Nolabel,array) :: index @ set_arg in
   mkexp ~loc (Pexp_apply(ghexp ~loc (Pexp_ident fn), args))
 
+  (*
 let indexop_unclosed_error loc_s s loc_e =
   let left, right = paren_to_strings s in
   unclosed left loc_s right loc_e
+  *)
 
 let lapply ~loc p1 p2 =
   if !Clflags.applicative_functors
@@ -700,7 +704,7 @@ let expr_of_lwt_bindings ~loc lbs body =
   let default_loc = ref Location.none
 
   let default_expr () =
-    let id = Location.mkloc "merlin.hole" !default_loc in
+    let id = Location.mkloc Ast_helper.hole_txt !default_loc in
     Exp.mk ~loc:!default_loc (Pexp_extension (id, PStr []))
 
   let default_pattern () = Pat.any ~loc:!default_loc ()
@@ -850,8 +854,6 @@ let expr_of_lwt_bindings ~loc lbs body =
 
 %token EOL                    "\\n"      (* not great, but EOL is unused *)
 
-%token QUESTIONQUESTION [@symbol "??"]
-
 %token LET_LWT [@cost 1] [@symbol "lwt"]
 %token TRY_LWT [@cost 1] [@symbol "try_lwt"]
 %token MATCH_LWT [@cost 1] [@symbol "match_lwt"]
@@ -928,7 +930,7 @@ The precedences must be listed from low to high.
           LBRACE LBRACELESS LBRACKET LBRACKETBAR LIDENT LPAREN
           NEW PREFIXOP STRING TRUE UIDENT UNDERSCORE
           LBRACKETPERCENT QUOTED_STRING_EXPR
-          DOTLESS DOTTILDE GREATERDOT QUESTIONQUESTION
+          DOTLESS DOTTILDE GREATERDOT
 
 
 /* Entry points */
@@ -1431,7 +1433,8 @@ module_expr [@recovery default_module_expr ()]:
         { Pmod_extension ex }
     | (* A hole. *)
       UNDERSCORE
-        { Pmod_hole }
+        { let id = mkrhs Ast_helper.hole_txt $loc in
+          Pmod_extension (id, PStr []) }
     )
     { $1 }
 ;
@@ -2565,7 +2568,8 @@ let_pattern [@recovery default_pattern ()]:
   | extension
       { Pexp_extension $1 }
   | UNDERSCORE
-      { Pexp_hole }
+      { let id = mkrhs Ast_helper.hole_txt $loc in
+        Pexp_extension (id, PStr []) }
   | od=open_dot_declaration DOT mkrhs(LPAREN RPAREN {Lident "()"})
       { Pexp_open(od, mkexp ~loc:($loc($3)) (Pexp_construct($3, None))) }
   (*

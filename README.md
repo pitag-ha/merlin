@@ -33,7 +33,7 @@ features.
 Compilation
 -----------
 
-Dependencies: ocamlfind, yojson >= 1.6.0, dune >= 2.7.
+Dependencies: ocamlfind, yojson >= 2.0.0, dune >= 2.7.
 
 ```shell
 dune build -p dot-merlin-reader,merlin
@@ -153,6 +153,19 @@ External contributors have implemented modes for more editors:
 - [ocaml-merlin package for Atom](https://atom.io/packages/ocaml-merlin)
 - [nuclide for Atom](https://nuclide.io/) includes Merlin support
 - [Sublime Text 3](https://github.com/cynddl/sublime-text-merlin)
+
+
+Merlin as a library
+===================
+
+Merlin can also be used as a library. Some projects already rely on this:
+
+- [OCaml LSP](https://github.com/ocaml/ocaml-lsp) - The official OCaml's Language Server Protocol implementation
+
+If you're building editor tools, you might also want to use Merlin as a library!
+
+Note, however, that Merlin's public API is not stable and we don't guarantee backward-compatibility between releases.
+If you're a Merlin user and depend on our public API, we recommend that you contact us or open an issue.
 
 Next steps
 ==========

@@ -54,7 +54,7 @@ type file = {
   recurse    : bool;
   includes   : string list;
   path       : string;
-  directives : Dot_protocol.Directive.Raw.t list;
+  directives : Merlin_dot_protocol.Directive.Raw.t list;
 }
 
 module Cache = File_cache.Make (struct
@@ -107,8 +107,7 @@ module Cache = File_cache.Make (struct
           else if String.is_prefixed ~by:"#" line then
             ()
           else
-            Logger.notify ~section:".merlin"
-              "%s: unexpected directive \"%s\"" path line;
+            tell (`UNKNOWN_TAG (String.split_on_char ~sep:' ' line |> List.hd));
           aux ()
         in
         aux ()
@@ -301,8 +300,8 @@ let path_of_packages ?conf ?path ?toolchain packages =
   path, ppxs, failures
 
 type config = {
-  pass_forward : Dot_protocol.Directive.no_processing_required list;
-  to_canonicalize : (string * Dot_protocol.Directive.include_path) list;
+  pass_forward : Merlin_dot_protocol.Directive.no_processing_required list;
+  to_canonicalize : (string * Merlin_dot_protocol.Directive.include_path) list;
   stdlib : string option;
   packages_to_load : string list;
   findlib : string option;
@@ -321,12 +320,12 @@ let empty_config = {
 }
 
 let prepend_config ~cwd ~cfg =
-  List.fold_left ~init:cfg ~f:(fun cfg (d : Dot_protocol.Directive.Raw.t) ->
+  List.fold_left ~init:cfg ~f:(fun cfg (d : Merlin_dot_protocol.Directive.Raw.t) ->
     match d with
     | `B _ | `S _ | `CMI _ | `CMT _  as directive ->
       { cfg with to_canonicalize = (cwd, directive) :: cfg.to_canonicalize }
     | `EXT _ | `SUFFIX _ | `FLG _ | `READER _
-    | `EXCLUDE_QUERY_DIR as directive ->
+    | (`EXCLUDE_QUERY_DIR | `UNKNOWN_TAG _) as directive ->
       { cfg with pass_forward = directive :: cfg.pass_forward }
     | `PKG ps ->
       { cfg with packages_to_load = ps @ cfg.packages_to_load }
@@ -455,9 +454,9 @@ let postprocess cfg =
           | `CMI path -> List.map (expand ~stdlib dir path) ~f:(fun p -> `CMI p)
           | `CMT path -> List.map (expand ~stdlib dir path) ~f:(fun p -> `CMT p)
         in
-        (dirs :> Dot_protocol.directive list)
+        (dirs :> Merlin_dot_protocol.directive list)
       )
-    ; (cfg.pass_forward :> Dot_protocol.directive list)
+    ; (cfg.pass_forward :> Merlin_dot_protocol.directive list)
     ; List.concat_map pkg_paths ~f:(fun p -> [ `B p; `S p ])
     ; ppx
     ; List.map failures ~f:(fun s -> `ERROR_MSG s)
@@ -477,11 +476,11 @@ let load dot_merlin_file =
 let dot_merlin_file =  Filename.concat (Sys.getcwd ()) ".merlin"
 
 let rec main () =
-  match Dot_protocol.Commands.read_input stdin with
+  match Merlin_dot_protocol.Commands.read_input stdin with
   | Halt -> exit 0
   | File _path ->
     let directives = load dot_merlin_file in
-    Dot_protocol.write ~out_channel:stdout directives;
+    Merlin_dot_protocol.write ~out_channel:stdout directives;
     flush stdout;
     main ()
   | Unknown -> main ()

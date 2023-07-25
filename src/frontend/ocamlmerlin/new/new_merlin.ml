@@ -49,10 +49,10 @@ let run =
     1
   | "-version" :: _ ->
     Printf.printf "The Merlin toolkit version %s, for Ocaml %s\n"
-      My_config.version Sys.ocaml_version;
+      Merlin_config.version Sys.ocaml_version;
     0
   | "-vnum" :: _ ->
-    Printf.printf "%s\n" My_config.version;
+    Printf.printf "%s\n" Merlin_config.version;
     0
   | "-warn-help" :: _ ->
     Warnings.help_warnings ();
@@ -142,7 +142,7 @@ let run =
         log ~title:"run(result)" "%a" Logger.json (fun () -> json);
         begin match Mconfig.(config.merlin.protocol) with
           | `Sexp -> Sexp.tell_sexp print_string (Sexp.of_json json)
-          | `Json -> Std.Json.to_channel stdout json
+          | `Json ->  Yojson.Basic.to_channel stdout json
         end;
         print_newline ()
       end with
@@ -163,11 +163,8 @@ let run ~new_env wd args =
       try Sys.chdir wd; Printf.sprintf "changed directory to %S" wd
       with _ -> Printf.sprintf "cannot change working directory to %S" wd
   in
-  let log_file, sections =
-    match Std.String.split_on_char_ ',' (Sys.getenv "MERLIN_LOG") with
-    | (value :: sections) -> (Some value, sections)
-    | [] -> (None, [])
-    | exception Not_found -> (None, [])
+  let `Log_file_path log_file, `Log_sections sections =
+    Log_info.get ()
   in
   Logger.with_log_file log_file ~sections @@ fun () ->
   log ~title:"run" "%s" wd_msg;

@@ -190,7 +190,7 @@ let dispatch_sync config state (type a) : a sync_command -> a = function
     (`Selected !Old_IO.current_version,
      `Latest Old_IO.latest_version,
      Printf.sprintf "The Merlin toolkit version %s, for Ocaml %s\n"
-       My_config.version Sys.ocaml_version)
+       Merlin_config.version Sys.ocaml_version)
 
   | Flags_get ->
     let pipeline = make_pipeline config state in
@@ -231,6 +231,7 @@ let dispatch (type a) (context : Context.t) (cmd : a command) : a =
   let config = match context.printer_verbosity with
     | None -> config
     | Some verbosity ->
+      let verbosity = Mconfig.Verbosity.of_string verbosity in
       Mconfig.({config with query = {config.query with verbosity}})
   in
   let config = match context.printer_width with
