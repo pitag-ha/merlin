@@ -6,11 +6,8 @@ test
   > EOF
   paths: [t1]
   [
-    {
-      "start": { "line": 1, "col": 18 },
-      "end": { "line": 1, "col": 20 },
-      "identifier": "t1"
-    }
+    { "start": { "line": 1, "col": 18 }, "end": { "line": 1, "col": 20 },
+    "identifier": "t1" }
   ]
   node = core_type
   exprs = [t1]
