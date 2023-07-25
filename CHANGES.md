@@ -1,3 +1,32 @@
+git version
+===========
+
+  + merlin binary
+    - filter dups in source paths (#1218)
+    - improve load path performance (#1323)
+    - fix handlink of ppx's under Windows (#1413)
+    - locate: look for original source files before looking for preprocessed
+      files (#1219 by @ddickstein, fixes #894)
+    - handle `=` syntax in compiler flags (#1409)
+    - expose all destruct exceptions in the api (#1437)
+    - fix superfluous break in error reporting (#1432)
+    - recognise binding operators in locate and occurrences (#1398, @mattiase)
+    - remove dependency on Result (#1441, @kit-ty-kate)
+  + editor modes
+    - fix an issue in Neovim where the current line jumps to the top of the
+      window on repeated calls to `MerlinTypeOf` (#1433 by @ddickstein, fixes
+      #1221)
+    - add module, module type, and class imenu items for emacs (#1244, @ivg)
+    - add prefix argument to force or prevent opening in a new buffer in locate
+      command (#1426, @panglesd)
+    - add type-on-hover functionality for vim (#1439, @nilsbecker)
+    - add a dedicated buffer `*merlin-errors*` containing the last viewed error
+      (#1414, @panglesd)
+  + test suite
+    - cover locate calls on module aliases with and without dune
+    - Add a test expliciting the interaction between locate and Dune's generated
+      source files (#1444)
+
 merlin 4.4
 ==========
 Mon Jul 26 11:12:21 PM CET 2021
@@ -17,10 +46,14 @@ Mon Jul 26 11:12:21 PM CET 2021
     - fix handling of record field expressions (#1375)
     - allow -pp to return an AST (#1394)
     - fix merlin crashing due to short-paths (#1334, fixes #1322)
+    - don't reset the environment when running merlin in single mode so that the
+      parent environement is forwarded the the child processes (#1425)
   + editor modes
     - update quick setup instructions for emacs (#1380, @ScriptDevil)
   + test suite
     - improve record field destruction testing (#1375)
+    - make `merlin-wrapper` create a default `.merlin` file  only when there is
+      no `dune-project` to let tests use `dune ocaml-merlin` reader. (#1425)
 
 merlin 4.3.1
 ============
@@ -140,7 +173,7 @@ Tue Feb  2 03:13:37 PM CET 2021
     - emacs: add missing mandatory argument for define-obsolete-function-alias
       (#1250, by Atharva Shukla, fixes #1234)
     - emacs: use "opam var" instead of "opam config var" (#1249, by Raja Boujbel)
-    - vim: fix CursorMoved semantics (#1213, by Daniel Dickstein)
+    - vim: fix CursorMoved semantics (#1213, by @ddickstein)
     - vim: add :MerlinLocateImpl and :MerlinLocateIntf (#1208 by Matthew Ryan)
   + test suite
     - replace mdx usage by dune's cram mechanism
