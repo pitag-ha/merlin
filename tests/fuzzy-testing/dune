@@ -16,9 +16,7 @@
  (deps
   irmin
   %{bin:ocamlmerlin-server}
-  %{bin:ocamlmerlin}
-  %{bin:merlin-wrapper}
-  %{bin:dot-merlin-reader})
+  %{bin:ocamlmerlin})
  (enabled_if
   (= true %{env:FUZZING=false}))
  ; FIXME: currently using the [merl-an] installed in the switch lol
