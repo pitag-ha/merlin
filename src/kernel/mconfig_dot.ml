@@ -43,6 +43,7 @@ type config = {
   stdlib       : string option;
   reader       : string list;
   exclude_query_dir : bool;
+  use_ppx_cache : bool;
 }
 
 let empty_config = {
@@ -56,6 +57,7 @@ let empty_config = {
   stdlib       = None;
   reader       = [];
   exclude_query_dir = false;
+  use_ppx_cache = false;
 }
 
 let white_regexp = Str.regexp "[ \t]+"
@@ -233,6 +235,8 @@ let prepend_config ~dir:cwd configurator (directives : directive list) config =
       {config with reader}, errors
     | `EXCLUDE_QUERY_DIR ->
       {config with exclude_query_dir = true}, errors
+    | `USE_PPX_CACHE ->
+      {config with use_ppx_cache = true}, errors
     | `ERROR_MSG str ->
       config, str :: errors
     | `UNKNOWN_TAG _ when configurator = Configurator.Dune ->
@@ -257,6 +261,7 @@ let postprocess_config config =
     stdlib      = config.stdlib;
     reader      = config.reader;
     exclude_query_dir = config.exclude_query_dir;
+    use_ppx_cache = config.use_ppx_cache;
   }
 
 type context = {
@@ -279,12 +284,11 @@ let get_config { workdir; process_dir; configurator } path_abs =
       workdir
   in
   let query path (p : Configurator.Process.t) =
+    let open Merlin_dot_protocol.Blocking in
     log_query path;
-    Merlin_dot_protocol.Commands.send_file
-      ~out_channel:p.stdin
-      path;
+    Commands.send_file p.stdin path;
     flush p.stdin;
-    Merlin_dot_protocol.read ~in_channel:p.stdout
+    read p.stdout
   in
   try
     let p =
@@ -335,12 +339,15 @@ let get_config { workdir; process_dir; configurator } path_abs =
       - If `dot-merlin-reader` is not installed and the project use `.merlin`
         files
       - There was a bug in the external reader causing a crash *)
+      let program_name = Lib_config.program_name () in
       let error = Printf.sprintf
-        "A problem occurred with merlin external configuration reader. %s If \
-         the problem persists, please file an issue on Merlin's tracker."
+        "A problem occurred with %s external configuration reader. %s If \
+         the problem persists, please file an issue on %s's tracker."
+        program_name
         (match configurator with
         | Dot_merlin -> "Check that `dot-merlin-reader` is installed."
         | Dune -> "Check that `dune` is installed and up-to-date.")
+        program_name
       in
       empty_config, [ error ]
     | End_of_input ->
@@ -348,11 +355,12 @@ let get_config { workdir; process_dir; configurator } path_abs =
         - if a project using old-dune has not been built and Merlin wrongly tries to
           start `new-dune ocaml-merlin` in the absence of `.merlin` files
         - the process stopped in the middle of its answer (which is very unlikely) *)
+      let program_name = Lib_config.program_name () in
       let error = Printf.sprintf
-        "Merlin could not load its configuration from the external reader. %s"
+        "%s could not load its configuration from the external reader. %s"
+        program_name
         (match configurator with
-        | Dot_merlin -> "If the problem persists, please file an issue on \
-          Merlin's tracker."
+        | Dot_merlin -> "If the problem persists, please file an issue."
         | Dune -> "Building your project with `dune` might solve this issue.")
       in
       empty_config, [ error ]

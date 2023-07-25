@@ -1,12 +1,65 @@
+merlin 4.9
+==========
+unreleased
+
+  + merlin binary
+    - Allow monadic IO in dot protocol (#1581)
+    - Add a `scope` option to the `occurrences` command in preparation for
+      the upcoming `project-wide-occurrences` feature (#1596)
+    - Construct bool-typed holes as `false` instead of `true` in the
+      `construct` command, for consistency (#1599).
+    - Add a hook to configure system command for spawning ppxes when Merlin is
+      used as a library. (#1585)
+    - Implement an all-or-nothing cache for the PPX phase (#1584)
+    - Cleanup functors caches when backtracking, to avoid memory leaks
+      (#1609, fixes #1529 and ocaml-lsp#1032)
+    - Fix `construct` results ordering for sum types sand poly variants (#1603)
+    - Fix object method completion not working (#1606, fixes #1575)
+    - Improve context detection for package types (#1608, fixes #1607)
+    - Fix incorrect locations for string literals (#1574)
+    - Fixed an issue that caused `errors` to erroneously alert about missing
+      `cmi` files (#1577)
+  + editor modes
+    - emacs: call the user's configured completion UI in
+      `merlin-construct` (#1598)
+  + test suite
+    - Add missing dependency to a test using ppxlib (#1583)
+    - Add tests for the new PPX phase cache (#1584)
+    - Add and update tests for `construct` ordering (#1603)
+
+merlin 4.8
+==========
+Fri Feb 24 16:55:42 CEST 2023
+
+  + merlin binary
+    - Update internal typer to match OCaml 4.14.1 release (#1557)
+    - Improve type-enclosing behaviour when used on records' labels (#1565,
+      fixes #1564)
+    - Restore compatibility with some OCaml compiler's debug flags that were
+      incorrectly rejected by Merlin (#1556)
+    - Traverse aliases when jumping to declaration. This matches
+      jump-to-definition's behavior (#1563)
+    - Improve locate's behavior in various ill-typed expressions (#1546, fixes
+      #1567 and partially #1543)
+    - Correctly traverse patterns when looking for docs in the typedtree (#1572)
+    - Get documentation when the declaration or definition is selected (#1542,
+      fixes #1540)
+    - On Windows, change to a harmless directory when launching server to avoid
+      locking down current directory (#1569, fixes #1474)
+  + test suite
+    - Add multiple tests for locate over ill-typed expressions (#1546)
+    - Add non-regression tests for other fixes in this release
+
 merlin 4.7
 ==========
-undefined
+Thu Nov 24 13:31:42 CEST 2022
 
   + merlin binary
     - Replace custom "holes" AST nodes by extensions. This restores binary
       compatibility and fixes issues with PPXs when using typed-holes.
       (#1503)
-    - Do not change temporarily Merlin's cwd when starting a PPX (#1521)
+    - Do not change temporarily Merlin's cwd when starting a PPX (#1521,
+      fixes #1420)
     - Fix a parsing issue when declaring the `(??)` custom prefix operator.
       (#1507, fixes #1506)
     - Fix variant constructors' comments grouping (#1516, @mheiber, fixes #1513)
@@ -16,14 +69,21 @@ undefined
     - Improve locate for labels' declarations in the current buffer.
       (#1505, fixes #1524)
     - Fix locate on module without implementation (#1522, fixes #1519)
+    - Allow program name customization when merlin is used as a library. (#1532)
   + editor modes
-    - vim: load the plugin when necessary if it wasn’t loaded before (#1511)
+    - vim: load the plugin when necessary if it wasn't loaded before (#1511)
+    - emacs: xref works from context menus; better highlighting of xref
+      matches; xref recognises operators and binding operators at the
+      cursor position; bad locations are filtered out (#1385, fixes
+      #1410)
+    - emacs: update CI for newer releases and fix some warnings (#1454,
+      @mattiase)
   + test suite
-    - add tests for constructors' documentation (#1511)
-    - add test cases for label comment documentation (#1526, @mheiber)
-  + test suite
+    - Add tests for constructors' documentation (#1511)
+    - Add test cases for label comment documentation (#1526, @mheiber)
     - Add a test for the `enclosing` command (#1512)
     - Add tests for interactions between locate and record labels (#1505)
+    - Add test showing an issue with locate and implicit transitive deps
 
 merlin 4.6
 ==========
