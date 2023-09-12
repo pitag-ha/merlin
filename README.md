@@ -5,6 +5,7 @@
 Emacs and Vim support is provided out-of-the-box. To get editor support with Merlin in
 other editors, see [this](#other-editors).
 
+
 Easy Installation With opam
 ===========================
 
