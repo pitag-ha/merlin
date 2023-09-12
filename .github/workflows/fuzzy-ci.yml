@@ -1,0 +1,66 @@
+name: Fuzzy CI
+
+on:
+  pull_request:
+    branches: [ master ]
+    types: [ opened, synchronize, reopened, labeled, unlabeled ]
+
+jobs:
+  Changelog-Entry-Check:
+    name: Check Changelog Action
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: tarides/changelog-check-action@v2
+
+# jobs:
+#   fuzzy:
+#     name: Fuzzy CI
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v3
+
+#       - name: Install OCaml
+#         uses: ocaml/setup-ocaml@v2
+#         with:
+#           # When updating the compiler here, also update the Irmin build on ... to the new compiler
+#           ocaml-compiler: 4.14.x
+#           dune-cache: true
+
+#       - name: Install dependencies
+#         run: opam install --deps-only .
+
+#       - name: Run build
+#         run: opam exec -- dune build
+
+#       - name: Install merlin
+#         run: opam install .
+
+#       - name: Install merl-an
+#         run: opam pin -y merl-an https://github.com/pitag-ha/merl-an.git
+
+#       - name: Fetch and go into test repo
+#         run: |
+#           git clone https://github.com/pitag-ha/merlin-fuzzy-ci-data.git
+#           cd merlin-fuzzy-ci-data
+#           git pull origin main
+
+#       - name: Check out fresh branch
+#       - run: |
+#           git pull origin main
+#           git checkout origin/main
+#           git checkout -b yuhuuu
+
+#       - name: Create and commit new data
+#       # TODO: Also add the other two dirs
+#       - run: |
+#           merl-an behavior --queries=type-enclosing,occurrences,locate,complete-prefix,errors --sample-size=30 --data=irmin_data --merlin=ocamlmerlin --project=test-code-base/irmin/src/irmin/
+#           git add irmin_data
+#           git commit -m "Updated data from PR ..."
+
+#       - name: Compare
+#       - run: git diff origin/main
+
+#       # - name: Push new data
+#       # - run: git push origin
+#       # - env:
+#       #   PAT: ${{ secrets.PAT_FOR_FUZZY_CI_REPO }}
