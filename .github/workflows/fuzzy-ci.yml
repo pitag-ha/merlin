@@ -1,0 +1,273 @@
+name: Fuzzy CI
+
+on:
+  # push:
+  #   branches: [ fuzzy-ci-artefacts-approach ]
+  pull_request:
+    branches: [ fuzzy-ci-artefacts-approach ]
+    types: [ opened, synchronize, reopened, unlabeled, labeled ]
+
+jobs:
+  approve:
+    name: Diff has been approved
+    # FIXME: Find a way to run this iff the workflow run was triggered by setting the `fuzzy-diff-looks-good` label.
+    if: github.event_name == 'pull_request' && github.event.action == 'labeled' && contains(github.event.pull_request.labels.*.name, 'fuzzy-diff-looks-good')
+    runs-on: ubuntu-20.04
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Write comment on PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -LsX POST -H "Authorization: Bearer $GITHUB_TOKEN" -d '{"body":"Hello :)"}' ${{ github.event.pull_request.comments_url}}
+          echo $?
+  debugging:
+    name: debugging
+    runs-on: ubuntu-20.04
+    permissions: write-all
+    env:
+      api_url: ${{ github.event.pull_request.base.repo.url }}
+    steps:
+      - name: Get artifacts meta-data
+        id: meta_data
+        run: |
+          meta_data=$(curl -sSL  $api_url/actions/artifacts)
+          last_diff_artifact=$(echo $meta_data | jq -r '.artifacts | map(select(.name | endswith(".diff"))) | max_by(.created_at)')
+          echo "diff_name=$(echo $last_diff_artifact | jq -r '.name')" >> $GITHUB_ENV
+          echo "run_id=$(echo $last_diff_artifact | jq -r '.workflow_run.id')" >> $GITHUB_ENV
+
+
+          # curl -sSLJO $api_url/actions/artifacts/$artifact_id/zip
+
+      - name: Download last diff
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          run_id: ${{ env.run_id}}
+          name: ${{ env.diff_name}}
+
+      - name: Debugging
+        run: |
+          echo "diff_name: ${{ env.diff_name}}"
+          echo "run_id: ${{ env.run_id}}"
+
+      # - name: Log
+      #   run: cat zip
+
+      # - name: Unzip
+      #   run: unzip -q zip
+
+      - name: ls
+        run: ls
+
+      - name: cat diff
+        run: cat $diff_name
+
+
+      # - name: url
+      #   run: echo ${{ github.event.pull_request.base.repo.url }}
+      # - name: debugging
+      #   run: jq '.' "${{ toJson(github.event.pull_request) }}""
+
+
+  data:
+    name: Generate data
+    runs-on: ubuntu-20.04
+    if: false
+    outputs:
+      base_branch_data_name: ${{ env.base_branch_data_name }}
+      merge_branch_data_name: ${{ env.merge_branch_data_name }}
+    env:
+      base_branch_sha: ${{ github.event.pull_request.base.sha }}
+      merge_branch_sha: ${{ github.sha }}
+      source_branch_sha: ${{ github.event.pull_request.head.sha }}
+    strategy:
+      matrix:
+        commit: ["merge_branch", "base_branch"]
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Checking out ${{ matrix.commit }}
+      run: |
+        sha=$${{ matrix.commit }}_sha
+        # echo "sha=$sha" >> $GITHUB_ENV
+        echo "Check out $sha"
+        git checkout $sha
+
+
+    # - name: Check if merge was fast-forwarded
+    #   if: ${{ matrix.commit == 'merge-commit' }}
+    #   run: |
+    #     merge_sha=$${{ matrix.commit }}
+    #     source=$(git rev-parse $merge_sha^2)
+    #     git diff $merge_sha $source
+
+    - name: Create artifact dir
+      run: mkdir -p data
+
+    - name: Create data
+      run: |
+        touch data1.json
+        touch data2.json
+        echo "whatever ${{matrix.commit}}, run num: ${{ github.run_number }}" > data1.json
+        echo "whetever else ${{matrix.commit}}, run num: ${{ github.run_number }}" > data2.json
+      working-directory: data
+
+    - name: Create name for base branch data
+      run:
+        echo "base_branch_data_name=${{ env.base_branch_sha }}" >> $GITHUB_ENV
+
+    - name: Create name for merge branch data
+      run: |
+        echo "merge_branch_data_name=merge${{ env.base_branch_sha }}-${{ env.source_branch_sha }}" >> $GITHUB_ENV
+
+    - name: Create name for matrix entry data
+      run: echo "data_name=$${{ matrix.commit }}_data_name" >> $GITHUB_ENV
+
+    - name: Upload data
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ env.data_name }}
+        path: data
+
+  diff:
+    name: Generate diff
+    runs-on: ubuntu-20.04
+    needs: data
+    env:
+      base_branch_data_name: ${{ needs.data.outputs.base_branch_data_name }}
+      merge_branch_data_name: ${{ needs.data.outputs.merge_branch_data_name }}
+      diff_file: ${{ github.event.pull_request.base.sha }}..merge${{ github.event.pull_request.base.sha }}.diff
+    steps:
+      - name: Download base branch data
+        env:
+          data_dir: ${{ env.base_branch_data_name }}
+        uses: actions/download-artifact@v3
+        with:
+          name: ${{ env.data_dir }}
+          path: data-${{ env.data_dir }}
+      - name: Download merge branch data
+        env:
+          data_dir: ${{ env.merge_branch_data_name }}
+        uses: actions/download-artifact@v3
+        with:
+          name: ${{ env.data_dir }}
+          path: data-${{ env.data_dir }}
+
+      - name: Write diff
+        id: diff
+        run: (diff -U 1 data-$base_branch_data_name data-$merge_branch_data_name > $diff_file && echo "diff_exists=fase" | tee -a "$GITHUB_OUTPUT" ) || echo "diff_exists=true" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Upload diff
+        if: ${{ steps.diff.outputs.diff_exists}}
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.diff_file }}
+          path: ${{ env.diff_file }}
+
+      - name: Return
+        run: |
+          if "${{ steps.diff.outputs.diff_exists}}"; then
+            cat $diff_file
+            exit 1
+          else
+            echo "No diff. All good."
+            exit 0
+          fi
+
+
+
+    # - name: log PR target
+    #   run: git log remotes/origin/${{ github.base_ref }} -n 3
+
+    # - name: Find common ancestor
+    #   run: |
+    #     common_ancestor = $(git merge-base ${{ github.ref }} ${{ github.base_ref }})
+    #     echo "Common ancestor: $common_ancestor"
+
+
+
+#       - name: Checkout code
+#         uses: actions/checkout@v3
+
+#       - name: Install OCaml
+#         uses: ocaml/setup-ocaml@v2
+#         with:
+#           # When updating the compiler here, also update the Irmin build on ... to the new compiler
+#           ocaml-compiler: ocaml-base-compiler.4.14.1
+#           dune-cache: true
+
+#       - name: Install dependencies
+#         run: opam install --deps-only .
+
+# # TODO: rebase over master before installing merlin.
+
+#       - name: Install merlin
+#         run: |
+#           opam exec -- dune subst
+#           opam exec -- dune build
+#           opam exec -- dune install
+
+#       - name: Install merl-an
+#         run: opam pin -y merl-an https://github.com/pitag-ha/merl-an.git
+
+#       - name: Set up ssh env
+#         uses: webfactory/ssh-agent@v0.7.0
+#         with:
+#           ssh-private-key: ${{ secrets.DEPLOY_KEY_FOR_FUZZY_CI }}
+
+#       - name: Clone data repo
+#         run: git clone git@github.com:pitag-ha/merlin-fuzzy-ci-data.git data
+
+#       - name: Configure git user
+#         run: |
+#           git config user.email "actions@github.com>"
+#           git config user.name "Merlin Fuzzy CI"
+#         working-directory: data
+
+#       - name: Checkout new branch
+#         run: |
+#           git fetch origin
+#           git checkout origin/main
+#           git checkout -b yuhuuu
+#         working-directory: data
+
+#       - name: Build test code base
+#         run: |
+#           eval $(opam env)
+#           dune build @check
+#         working-directory: data/test-code-base/irmin
+
+#       - name: Create new data
+#         run: |
+#           eval $(opam env)
+#           merl-an behavior --queries=type-enclosing,occurrences,locate,complete-prefix,errors --sample-size=30 --data=irmin_data --merlin=ocamlmerlin --project=test-code-base/irmin/src/irmin/
+#           # merl-an behavior --queries=type-enclosing,occurrences,locate,complete-prefix,errors --sample-size=30 --data=irmin_pack_data --merlin=ocamlmerlin --project=irmin/src/irmin-pack --extensions=ml
+#           # merl-an behavior --queries=type-enclosing,occurrences,locate,complete-prefix,errors --sample-size=30 --data=irmin_pack_test_data --merlin=ocamlmerlin --project=irmin/test/irmin-pack --extensions=ml
+#         working-directory: data
+
+#       - name: Commit new data
+#         run: |
+#           git add irmin_data
+#           git commit -m "Updated data from PR ..."
+#         working-directory: data
+
+#       - name: Push new data
+#         run: git push --set-upstream -f origin yuhuuu
+#         env:
+#           SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_KEY_FOR_FUZZY_CI }}
+#         working-directory: data
+
+#       - name: Diff new data with old data
+#         run: |
+#           if [[ -n $(git diff origin/main) ]]; then
+#             echo "See diff on https://github.com/pitag-ha/merlin-fuzzy-ci-data/compare/main...yuhuuu"
+#             exit 1
+#           else
+#             echo "All good: No diff on merl-an's sample set."
+#           fi
+#         working-directory: data
