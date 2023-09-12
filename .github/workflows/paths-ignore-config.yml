@@ -1,0 +1,8 @@
+paths-ignore:
+      - '**.md'
+      - '**.txt'
+      - '.git*'
+      - 'doc/**'
+      - 'emacs/**'
+      - 'vim/**'
+      - '**/emacs-lint.yml'

@@ -1,0 +1,90 @@
+name: Fuzzy CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+    types: [ opened, synchronize, reopened, labeled, unlabeled ]
+
+jobs:
+  fuzzy:
+    name: merl-an looks for Merlin behavior changes
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install OCaml
+        uses: ocaml/setup-ocaml@v2
+        with:
+          # When updating the compiler here, also update the Irmin build on ... to the new compiler
+          ocaml-compiler: 4.14.x
+          dune-cache: true
+
+      - name: Install dependencies
+        run: opam install --deps-only .
+
+      - name: Run build
+        run: opam exec -- dune build
+
+# TODO: rebase over main before installing merlin.
+
+      - name: Install merlin
+        run: opam install .
+
+      - name: Install merl-an
+        run: |
+          opam pin -y merl-an https://github.com/pitag-ha/merl-an.git
+          eval $(opam env)
+          merl-an --help
+
+      - name: Set up ssh env
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_KEY_FOR_FUZZY_CI }}
+
+      - name: Clone data repo
+        run: git clone git@github.com:pitag-ha/merlin-fuzzy-ci-data.git data
+
+      - name: Configure git user
+        run: |
+          git config user.email "actions@github.com>"
+          git config user.name "Merlin Fuzzy CI"
+        working-directory: data
+
+      - name: Checkout new branch
+        run: |
+          git fetch origin
+          git checkout origin/main
+          git checkout -b yuhuuu
+        working-directory: data
+
+      - name: Create new data
+        run: |
+          # TODO: Also add the other two dirs
+          eval $(opam env)
+          merl-an behavior --queries=type-enclosing,occurrences,locate,complete-prefix,errors --sample-size=30 --data=irmin_data --merlin=ocamlmerlin --project=test-code-base/irmin/src/irmin/
+        working-directory: data
+
+      - name: Commit new data
+        run: |
+          git add irmin_data
+          git commit -m "Updated data from PR ..."
+        working-directory: data
+
+      - name: Push new data
+        run: git push --set-upstream -f origin yuhuuu
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_KEY_FOR_FUZZY_CI }}
+        working-directory: data
+
+      - name: Diff new data with old data
+        run: |
+          if [[ -n $(git diff origin/main) ]]; then
+            echo "See diff on https://github.com/pitag-ha/merlin-fuzzy-ci-data/compare/main...yuhuuu"
+            exit 1
+          else
+            echo "All good: No diff on merl-an's sample set."
+          fi
+        working-directory: data
