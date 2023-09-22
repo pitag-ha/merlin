@@ -19,25 +19,22 @@ jobs:
         uses: ocaml/setup-ocaml@v2
         with:
           # When updating the compiler here, also update the Irmin build on ... to the new compiler
-          ocaml-compiler: 4.14.x
+          ocaml-compiler: ocaml-base-compiler.4.14.1
           dune-cache: true
 
       - name: Install dependencies
         run: opam install --deps-only .
 
-      - name: Run build
-        run: opam exec -- dune build
-
-# TODO: rebase over main before installing merlin.
+# TODO: rebase over master before installing merlin.
 
       - name: Install merlin
-        run: opam install .
+        run: |
+          opam exec -- dune subst
+          opam exec -- dune build
+          opam exec -- dune install
 
       - name: Install merl-an
-        run: |
-          opam pin -y merl-an https://github.com/pitag-ha/merl-an.git
-          eval $(opam env)
-          merl-an --help
+        run: opam pin -y merl-an https://github.com/pitag-ha/merl-an.git
 
       - name: Set up ssh env
         uses: webfactory/ssh-agent@v0.7.0
@@ -60,11 +57,18 @@ jobs:
           git checkout -b yuhuuu
         working-directory: data
 
+      - name: Build test code base
+        run: |
+          eval $(opam env)
+          dune build @check
+        working-directory: data/test-code-base/irmin
+
       - name: Create new data
         run: |
-          # TODO: Also add the other two dirs
           eval $(opam env)
           merl-an behavior --queries=type-enclosing,occurrences,locate,complete-prefix,errors --sample-size=30 --data=irmin_data --merlin=ocamlmerlin --project=test-code-base/irmin/src/irmin/
+          # merl-an behavior --queries=type-enclosing,occurrences,locate,complete-prefix,errors --sample-size=30 --data=irmin_pack_data --merlin=ocamlmerlin --project=irmin/src/irmin-pack --extensions=ml
+          # merl-an behavior --queries=type-enclosing,occurrences,locate,complete-prefix,errors --sample-size=30 --data=irmin_pack_test_data --merlin=ocamlmerlin --project=irmin/test/irmin-pack --extensions=ml
         working-directory: data
 
       - name: Commit new data
