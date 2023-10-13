@@ -11,56 +11,62 @@ jobs:
   all-good:
     name: Flag was set
     runs-on: ubuntu-20.04
-    if: github.event_name == 'pull_request' && github.event.action == 'synchronize'
+    if: github.event_name == 'pull_request' && github.event.action == 'labeled'
     steps:
       - name: Pass
-        run: echo "Running on synchronize"
+        run: echo "Running on labeled"
 
-  # fuzzy:
-  #   name: merl-an looks for Merlin behavior changes
-  #   runs-on: ubuntu-20.04
-  #   if: github.event_name == 'pull_request' && github.event.action == 'opened'
 
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v3
 
-  #     - name: Install OCaml
-  #       uses: ocaml/setup-ocaml@v2
-  #       with:
-  #         # When updating the compiler here, also update the Irmin build on ... to the new compiler
-  #         ocaml-compiler: ocaml-base-compiler.4.14.1
-  #         dune-cache: true
 
-  #     - name: Set up ssh env
-  #       uses: webfactory/ssh-agent@v0.7.0
-  #       with:
-  #         ssh-private-key: ${{ secrets.DEPLOY_KEY_FOR_FUZZY_CI }}
+  fuzzy:
+    name: merl-an looks for Merlin behavior changes
+    runs-on: ubuntu-20.04
+    if: github.event_name == 'pull_request' && github.event.action == 'opened'
 
-  #     - name: Clone data repo
-  #       run: git clone git@github.com:pitag-ha/merlin-fuzzy-ci-data.git data
+    steps:
+      - name: Logging
+        run: echo "Running on opened"
 
-  #     - name: Configure git user
-  #       run: |
-  #         git config user.email "actions@github.com>"
-  #         git config user.name "Merlin Fuzzy CI"
-  #       working-directory: data
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-  #     - name: Checkout new branch
-  #       run: |
-  #         git fetch origin
-  #         git checkout origin/main
-  #         git checkout -b label-logic
-  #       working-directory: data
+      - name: Install OCaml
+        uses: ocaml/setup-ocaml@v2
+        with:
+          # When updating the compiler here, also update the Irmin build on ... to the new compiler
+          ocaml-compiler: ocaml-base-compiler.4.14.1
+          dune-cache: true
 
-  #     - name: Push new data
-  #       run: git push --set-upstream -f origin label-logic
-  #       env:
-  #         SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_KEY_FOR_FUZZY_CI }}
-  #       working-directory: data
+      - name: Set up ssh env
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_KEY_FOR_FUZZY_CI }}
 
-  #     - name: Fail
-  #       run: exit 1
+      - name: Clone data repo
+        run: git clone git@github.com:pitag-ha/merlin-fuzzy-ci-data.git data
+
+      - name: Configure git user
+        run: |
+          git config user.email "actions@github.com>"
+          git config user.name "Merlin Fuzzy CI"
+        working-directory: data
+
+      - name: Checkout new branch
+        run: |
+          git fetch origin
+          git checkout origin/main
+          git checkout -b label-logic
+        working-directory: data
+
+      - name: Push new data
+        run: git push --set-upstream -f origin label-logic
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_KEY_FOR_FUZZY_CI }}
+        working-directory: data
+
+      - name: Fail
+        run: exit 1
 
 
 
