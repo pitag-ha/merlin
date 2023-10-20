@@ -1,43 +1,106 @@
 name: Fuzzy CI
 
 on:
-  push:
-    branches: [ fuzzy-ci-artefacts-approach ]
+  # push:
+  #   branches: [ fuzzy-ci-artefacts-approach ]
   pull_request:
     branches: [ fuzzy-ci-artefacts-approach ]
     types: [ opened, synchronize, reopened, labeled, unlabeled ]
 
+env:
+  shas-artefact: shas-${{ github.run_number }}
+  shas_file: shas.txt
+
 jobs:
-  fuzzy:
-    name: merl-an looks for Merlin behavior changes
+  shas:
+    name: Save merge commit and base branch shas
     runs-on: ubuntu-20.04
     steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Save merge commit sha
+      run: echo "source_branch=$(git rev-parse HEAD)" >> $shas_file
+
+    - name: Save base branch sha
+      id: base_branch
+      run: echo "base_branch=$(git rev-parse HEAD^1)" >> $shas_file
+
+    - name: Make shas available for other jobs
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ env.shas-artefact }}
+        path: ${{ env.shas_file }}
+
+  data:
+    name: Generate data
+    needs: shas
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        commit: ["source_branch", "base_branch"]
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - uses: actions/download-artifact@v3
+      with:
+        name: ${{ env.shas-artefact }}
+
+    - name: Save shas in env
+      run: cat $shas_file >> $GITHUB_ENV
+
+    - name: Checking out ${{ matrix.commit }}
+      run: |
+        sha=$${{ matrix.commit }}
+        echo "sha=$sha" >> $GITHUB_ENV
+        echo "Check out $sha"
+        git checkout $sha
+
+    # - name: Check if merge was fast-forwarded
+    #   if: ${{ matrix.commit == 'merge-commit' }}
+    #   run: |
+    #     merge_sha=$${{ matrix.commit }}
+    #     source=$(git rev-parse $merge_sha^2)
+    #     git diff $merge_sha $source
+
     - name: Create artefact dir
-      run: mkdir -p artefacts
+      run: mkdir -p data
 
     - name: Create data
       run: |
         touch data1.json
         touch data2.json
-        echo "whatever" > data1.json
-        echo "whetever else" > data2.json
-      working-directory: artefacts
+        echo "whatever ${{matrix.commit}}, run num: ${{ github.run_number }}" > data1.json
+        echo "whetever else ${{matrix.commit}}, run num: ${{ github.run_number }}" > data2.json
+      working-directory: data
 
     - name: Upload data
       uses: actions/upload-artifact@v3
       with:
-        name: todo
-        path: artefacts
+        name: ${{ env.sha }}
+        path: data
 
-    - name: Checkout
-      uses: actions/checkout@v2
-      with:
-        fetch-depth: 0 #Do I need this?
+  # diff:
+  # name: Generate diff
+  # needs: [shas, data]
+  
+  # - name: Get diff
+  #   run: diff -I 1 -r 
 
-    - name: Find common ancestor
-      run: |
-        common_ancestor = $(git merge-base ${{ github.ref }} ${{ github.base_ref }})
-        echo "Common ancestor: $common_ancestor"
+
+
+
+    # - name: log PR target
+    #   run: git log remotes/origin/${{ github.base_ref }} -n 3
+
+    # - name: Find common ancestor
+    #   run: |
+    #     common_ancestor = $(git merge-base ${{ github.ref }} ${{ github.base_ref }})
+    #     echo "Common ancestor: $common_ancestor"
 
 
 
