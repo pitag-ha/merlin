@@ -29,6 +29,16 @@ jobs:
         name: todo
         path: artefacts
 
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 0 #Do I need this?
+
+    - name: Find common ancestor
+      run: |
+        common_ancestor = $(git merge-base ${{ github.ref }} ${{ github.base_ref }})
+        echo "Common ancestor: $common_ancestor"
+
 
 #       - name: Checkout code
 #         uses: actions/checkout@v3
