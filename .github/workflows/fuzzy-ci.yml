@@ -15,23 +15,27 @@ jobs:
   shas:
     name: Save merge commit and base branch shas
     runs-on: ubuntu-20.04
+    outputs:
+      source_branch: ${{ steps.source_branch.outputs.sha }}
+      base_branch: ${{ steps.base_branch.outputs.sha }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
     - name: Save merge commit sha
-      run: echo "source_branch=$(git rev-parse HEAD)" >> $shas_file
+      id: source_branch
+      run: echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
     - name: Save base branch sha
       id: base_branch
-      run: echo "base_branch=$(git rev-parse HEAD^1)" >> $shas_file
+      run: echo "sha=$(git rev-parse HEAD^1)" >> $GITHUB_OUTPUT
 
-    - name: Make shas available for other jobs
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ env.shas-artefact }}
-        path: ${{ env.shas_file }}
+    # - name: Make shas available for other jobs
+    #   uses: actions/upload-artifact@v3
+    #   with:
+    #     name: ${{ env.shas-artefact }}
+    #     path: ${{ env.shas_file }}
 
   data:
     name: Generate data
@@ -46,14 +50,17 @@ jobs:
       with:
         fetch-depth: 0
 
-    - uses: actions/download-artifact@v3
-      with:
-        name: ${{ env.shas-artefact }}
+    # - uses: actions/download-artifact@v3
+    #   with:
+    #     name: ${{ env.shas-artefact }}
 
-    - name: Save shas in env
-      run: cat $shas_file >> $GITHUB_ENV
+    # - name: Save shas in env
+    #   run: cat $shas_file >> $GITHUB_ENV
 
     - name: Checking out ${{ matrix.commit }}
+      env:
+        source_branch: ${{ needs.shas.outputs.source_branch }}
+        base_branch: ${{ needs.shas.outputs.base_branch }}
       run: |
         sha=$${{ matrix.commit }}
         echo "sha=$sha" >> $GITHUB_ENV
