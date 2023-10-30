@@ -5,19 +5,27 @@ on:
   #   branches: [ fuzzy-ci-artefacts-approach ]
   pull_request:
     branches: [ fuzzy-ci-artefacts-approach ]
-    types: [ opened, synchronize, reopened, labeled, unlabeled ]
+    types: [ opened, synchronize, reopened, unlabeled, labeled ]
 
 jobs:
   approve:
     name: Diff has been approved
+    # FIXME: Find a way to run this iff the workflow run was triggered by setting the `fuzzy-diff-looks-good` label.
     if: github.event_name == 'pull_request' && github.event.action == 'labeled' && contains(github.event.pull_request.labels.*.name, 'fuzzy-diff-looks-good')
     runs-on: ubuntu-20.04
+    permissions:
+      issues: write
+      pull-requests: write
     steps:
-      - name: Find PR number
-        run: echo ${{ github.event.pull_request.number }}
+      - name: Write comment on PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -LsX POST -H "Authorization: Bearer $GITHUB_TOKEN" -d '{"body":"Hello :)"}' ${{ github.event.pull_request.comments_url}}
+          echo $?
   shas:
     name: Save merge commit and base branch shas
-    if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'reopened' || github.event.action == 'synchronize' || github.event.action == 'unlabeled')
+    if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'reopened' || github.event.action == 'synchronize' || ((github.event.action == 'labeled' || github.event.action == 'unlabeled') && ! contains(github.event.pull_request.labels.*.name, 'fuzzy-diff-looks-good')))
     runs-on: ubuntu-20.04
     outputs:
       source_branch: ${{ steps.source_branch.outputs.sha }}
