@@ -23,33 +23,22 @@ jobs:
         run: |
           curl -LsX POST -H "Authorization: Bearer $GITHUB_TOKEN" -d '{"body":"Hello :)"}' ${{ github.event.pull_request.comments_url}}
           echo $?
-  shas:
-    name: Save merge commit and base branch shas
-    if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'reopened' || github.event.action == 'synchronize' || ((github.event.action == 'labeled' || github.event.action == 'unlabeled') && ! contains(github.event.pull_request.labels.*.name, 'fuzzy-diff-looks-good')))
-    runs-on: ubuntu-20.04
-    outputs:
-      source_branch: ${{ steps.source_branch.outputs.sha }}
-      base_branch: ${{ steps.base_branch.outputs.sha }}
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    - name: Save merge commit sha
-      id: source_branch
-      run: echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
-    - name: Save base branch sha
-      id: base_branch
-      run: echo "sha=$(git rev-parse HEAD^1)" >> $GITHUB_OUTPUT
+
+
 
   data:
     name: Generate data
-    needs: shas
     runs-on: ubuntu-20.04
+    env:
+      base_branch_sha: ${{ github.event.pull_request.base.sha }}
+      merge_branch_sha: ${{ github.sha }}
+      source_branch_sha: ${{ github.event.pull_request.head.sha }}
+      # base_branch_data_name: ${{ env.base_branch_sha }}
+      # merge_branch_data_name: merge${{ env.source_branch_sha }}
     strategy:
       matrix:
-        commit: ["source_branch", "base_branch"]
+        commit: ["merge_branch", "base_branch"]
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -57,14 +46,12 @@ jobs:
         fetch-depth: 0
 
     - name: Checking out ${{ matrix.commit }}
-      env:
-        source_branch: ${{ needs.shas.outputs.source_branch }}
-        base_branch: ${{ needs.shas.outputs.base_branch }}
       run: |
-        sha=$${{ matrix.commit }}
-        echo "sha=$sha" >> $GITHUB_ENV
+        sha=$${{ matrix.commit }}_sha
+        # echo "sha=$sha" >> $GITHUB_ENV
         echo "Check out $sha"
         git checkout $sha
+
 
     # - name: Check if merge was fast-forwarded
     #   if: ${{ matrix.commit == 'merge-commit' }}
@@ -84,24 +71,32 @@ jobs:
         echo "whetever else ${{matrix.commit}}, run num: ${{ github.run_number }}" > data2.json
       working-directory: data
 
+    - name: Create name for base branch data
+      run:
+        echo "base_branch_data_name=${{ env.base_branch_sha }}" >> $GITHUB_ENV
+
+    - name: Create name for merge branch data
+      run: |
+        echo "merge_branch_data_name=merge${{ env.base_branch_sha }}-${{ env.source_branch_sha }}" >> $GITHUB_ENV
+
+    - name: Create name for matrix entry data
+      run: echo "data_name=$${{ matrix.commit }}_data_name" >> $GITHUB_ENV
+
     - name: Upload data
       uses: actions/upload-artifact@v3
       with:
-        name: ${{ env.sha }}
+        name: ${{ env.data_name }}
         path: data
 
   diff:
     name: Generate diff
     runs-on: ubuntu-20.04
-    needs: [shas, data]
+    needs: data
     env:
       source_branch: ${{ needs.shas.outputs.source_branch }}
       base_branch: ${{ needs.shas.outputs.base_branch }}
+      diff_file: my_diff.diff
     steps:
-      - name: Synch env
-        run: |
-          echo "source_branch: $source_branch" >> GITHUB.ENV
-          echo "target_branch: $target_branch" >> GITHUB.ENV
       - name: Download source branch data
         uses: actions/download-artifact@v3
         with:
@@ -116,8 +111,17 @@ jobs:
         run: cat data-${{ env.base_branch }}/data1.json
       - name: cat ${{ env.source_branch }}
         run: cat data-${{ env.source_branch }}/data1.json
-      - name: Get diff
-        run: diff -U 1 data-$base_branch data-$source_branch
+      - name: Write diff
+        run: (diff -U 1 data-$base_branch/data1.json data-$source_branch/data1.json > my_diff.diff && echo "No diff" ) || echo "There's a diff!"
+      - name: Return
+        run: |
+          if [ -n my_diff.diff ]; then
+            cat my_diff.diff
+            exit 1
+          else
+            echo "No diff. All good."
+            exit 0
+          fi
 
 
 
