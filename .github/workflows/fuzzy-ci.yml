@@ -1,43 +1,140 @@
 name: Fuzzy CI
 
 on:
-  push:
-    branches: [ fuzzy-ci-artefacts-approach ]
+  # push:
+  #   branches: [ fuzzy-ci-artefacts-approach ]
   pull_request:
     branches: [ fuzzy-ci-artefacts-approach ]
-    types: [ opened, synchronize, reopened, labeled, unlabeled ]
+    types: [ opened, synchronize, reopened, unlabeled, labeled ]
 
 jobs:
-  fuzzy:
-    name: merl-an looks for Merlin behavior changes
+  approve:
+    name: Diff has been approved
+    # FIXME: Find a way to run this iff the workflow run was triggered by setting the `fuzzy-diff-looks-good` label.
+    if: github.event_name == 'pull_request' && github.event.action == 'labeled' && contains(github.event.pull_request.labels.*.name, 'fuzzy-diff-looks-good')
     runs-on: ubuntu-20.04
+    permissions:
+      issues: write
+      pull-requests: write
     steps:
+      - name: Write comment on PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -LsX POST -H "Authorization: Bearer $GITHUB_TOKEN" -d '{"body":"Hello :)"}' ${{ github.event.pull_request.comments_url}}
+          echo $?
+  shas:
+    name: Save merge commit and base branch shas
+    if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'reopened' || github.event.action == 'synchronize' || ((github.event.action == 'labeled' || github.event.action == 'unlabeled') && ! contains(github.event.pull_request.labels.*.name, 'fuzzy-diff-looks-good')))
+    runs-on: ubuntu-20.04
+    outputs:
+      source_branch: ${{ steps.source_branch.outputs.sha }}
+      base_branch: ${{ steps.base_branch.outputs.sha }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Save merge commit sha
+      id: source_branch
+      run: echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+    - name: Save base branch sha
+      id: base_branch
+      run: echo "sha=$(git rev-parse HEAD^1)" >> $GITHUB_OUTPUT
+
+  data:
+    name: Generate data
+    needs: shas
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        commit: ["source_branch", "base_branch"]
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Checking out ${{ matrix.commit }}
+      env:
+        source_branch: ${{ needs.shas.outputs.source_branch }}
+        base_branch: ${{ needs.shas.outputs.base_branch }}
+      run: |
+        sha=$${{ matrix.commit }}
+        echo "sha=$sha" >> $GITHUB_ENV
+        echo "Check out $sha"
+        git checkout $sha
+
+    # - name: Check if merge was fast-forwarded
+    #   if: ${{ matrix.commit == 'merge-commit' }}
+    #   run: |
+    #     merge_sha=$${{ matrix.commit }}
+    #     source=$(git rev-parse $merge_sha^2)
+    #     git diff $merge_sha $source
+
     - name: Create artefact dir
-      run: mkdir -p artefacts
+      run: mkdir -p data
 
     - name: Create data
       run: |
         touch data1.json
         touch data2.json
-        echo "whatever" > data1.json
-        echo "whetever else" > data2.json
-      working-directory: artefacts
+        echo "whatever ${{matrix.commit}}, run num: ${{ github.run_number }}" > data1.json
+        echo "whetever else ${{matrix.commit}}, run num: ${{ github.run_number }}" > data2.json
+      working-directory: data
 
     - name: Upload data
       uses: actions/upload-artifact@v3
       with:
-        name: todo
-        path: artefacts
+        name: ${{ env.sha }}
+        path: data
 
-    - name: Checkout
-      uses: actions/checkout@v2
-      with:
-        fetch-depth: 0 #Do I need this?
+  diff:
+    name: Generate diff
+    runs-on: ubuntu-20.04
+    needs: [shas, data]
+    env:
+      source_branch: ${{ needs.shas.outputs.source_branch }}
+      base_branch: ${{ needs.shas.outputs.base_branch }}
+      diff_file: my_diff.diff
+    steps:
+      - name: Download source branch data
+        uses: actions/download-artifact@v3
+        with:
+          name: ${{ env.source_branch }}
+          path: data-${{ env.source_branch }}
+      - name: Download base branch data
+        uses: actions/download-artifact@v3
+        with:
+          name: ${{ env.base_branch }}
+          path: data-${{ env.base_branch }}
+      - name: cat ${{ env.base_branch }}
+        run: cat data-${{ env.base_branch }}/data1.json
+      - name: cat ${{ env.source_branch }}
+        run: cat data-${{ env.source_branch }}/data1.json
+      - name: Write diff
+        run: (diff -U 1 data-$base_branch/data1.json data-$source_branch/data1.json > my_diff.diff && echo "No diff" ) || echo "There's a diff!"
+      - name: Return
+        run: |
+          if [ -n my_diff.diff ]; then
+            cat my_diff.diff
+            exit 1
+          else
+            echo "No diff. All good."
+            exit 0
+          fi
 
-    - name: Find common ancestor
-      run: |
-        common_ancestor = $(git merge-base ${{ github.ref }} ${{ github.base_ref }})
-        echo "Common ancestor: $common_ancestor"
+
+
+    # - name: log PR target
+    #   run: git log remotes/origin/${{ github.base_ref }} -n 3
+
+    # - name: Find common ancestor
+    #   run: |
+    #     common_ancestor = $(git merge-base ${{ github.ref }} ${{ github.base_ref }})
+    #     echo "Common ancestor: $common_ancestor"
+
 
 
 #       - name: Checkout code
