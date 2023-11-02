@@ -30,12 +30,13 @@ jobs:
   data:
     name: Generate data
     runs-on: ubuntu-20.04
+    outputs:
+      base_branch_data_name: ${{ env.base_branch_data_name }}
+      merge_branch_data_name: ${{ env.merge_branch_data_name }}
     env:
       base_branch_sha: ${{ github.event.pull_request.base.sha }}
       merge_branch_sha: ${{ github.sha }}
       source_branch_sha: ${{ github.event.pull_request.head.sha }}
-      # base_branch_data_name: ${{ env.base_branch_sha }}
-      # merge_branch_data_name: merge${{ env.source_branch_sha }}
     strategy:
       matrix:
         commit: ["merge_branch", "base_branch"]
@@ -60,7 +61,7 @@ jobs:
     #     source=$(git rev-parse $merge_sha^2)
     #     git diff $merge_sha $source
 
-    - name: Create artefact dir
+    - name: Create artifact dir
       run: mkdir -p data
 
     - name: Create data
@@ -93,30 +94,40 @@ jobs:
     runs-on: ubuntu-20.04
     needs: data
     env:
-      source_branch: ${{ needs.shas.outputs.source_branch }}
-      base_branch: ${{ needs.shas.outputs.base_branch }}
-      diff_file: my_diff.diff
+      base_branch_data_name: ${{ needs.data.outputs.base_branch_data_name }}
+      merge_branch_data_name: ${{ needs.data.outputs.merge_branch_data_name }}
+      diff_file: ${{ github.event.pull_request.base.sha }}..merge${{ github.event.pull_request.base.sha }}.diff
     steps:
-      - name: Download source branch data
-        uses: actions/download-artifact@v3
-        with:
-          name: ${{ env.source_branch }}
-          path: data-${{ env.source_branch }}
       - name: Download base branch data
+        env:
+          data_dir: ${{ env.base_branch_data_name }}
         uses: actions/download-artifact@v3
         with:
-          name: ${{ env.base_branch }}
-          path: data-${{ env.base_branch }}
-      - name: cat ${{ env.base_branch }}
-        run: cat data-${{ env.base_branch }}/data1.json
-      - name: cat ${{ env.source_branch }}
-        run: cat data-${{ env.source_branch }}/data1.json
+          name: ${{ env.data_dir }}
+          path: data-${{ env.data_dir }}
+      - name: Download merge branch data
+        env:
+          data_dir: ${{ env.merge_branch_data_name }}
+        uses: actions/download-artifact@v3
+        with:
+          name: ${{ env.data_dir }}
+          path: data-${{ env.data_dir }}
+
       - name: Write diff
-        run: (diff -U 1 data-$base_branch/data1.json data-$source_branch/data1.json > my_diff.diff && echo "No diff" ) || echo "There's a diff!"
+        id: diff
+        run: (diff -U 1 data-$base_branch_data_name data-$merge_branch_data_name > $diff_file && echo "diff_exists=fase" | tee -a "$GITHUB_OUTPUT" ) || echo "diff_exists=true" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Upload diff
+        if: ${{ steps.diff.outputs.diff_exists}}
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.diff_file }}
+          path: ${{ env.diff_file }}
+
       - name: Return
         run: |
-          if [ -n my_diff.diff ]; then
-            cat my_diff.diff
+          if "${{ steps.diff.outputs.diff_exists}}"; then
+            cat $diff_file
             exit 1
           else
             echo "No diff. All good."
