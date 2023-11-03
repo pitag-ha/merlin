@@ -23,13 +23,58 @@ jobs:
         run: |
           curl -LsX POST -H "Authorization: Bearer $GITHUB_TOKEN" -d '{"body":"Hello :)"}' ${{ github.event.pull_request.comments_url}}
           echo $?
+  debugging:
+    name: debugging
+    runs-on: ubuntu-20.04
+    permissions: write-all
+    env:
+      api_url: ${{ github.event.pull_request.base.repo.url }}
+    steps:
+      - name: Get artifacts meta-data
+        id: meta_data
+        run: |
+          meta_data=$(curl -sSL  $api_url/actions/artifacts)
+          last_diff_artifact=$(echo $meta_data | jq -r '.artifacts | map(select(.name | endswith(".diff"))) | max_by(.created_at)')
+          echo "diff_name=$(echo $last_diff_artifact | jq -r '.name')" >> $GITHUB_ENV
+          echo "run_id=$(echo $last_diff_artifact | jq -r '.workflow_run.id')" >> $GITHUB_ENV
 
 
+          # curl -sSLJO $api_url/actions/artifacts/$artifact_id/zip
+
+      - name: Download last diff
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          run_id: ${{ env.run_id}}
+          name: ${{ env.diff_name}}
+
+      - name: Debugging
+        run: |
+          echo "diff_name: ${{ env.diff_name}}"
+          echo "run_id: ${{ env.run_id}}"
+
+      # - name: Log
+      #   run: cat zip
+
+      # - name: Unzip
+      #   run: unzip -q zip
+
+      - name: ls
+        run: ls
+
+      - name: cat diff
+        run: cat $diff_name
+
+
+      # - name: url
+      #   run: echo ${{ github.event.pull_request.base.repo.url }}
+      # - name: debugging
+      #   run: jq '.' "${{ toJson(github.event.pull_request) }}""
 
 
   data:
     name: Generate data
     runs-on: ubuntu-20.04
+    if: false
     outputs:
       base_branch_data_name: ${{ env.base_branch_data_name }}
       merge_branch_data_name: ${{ env.merge_branch_data_name }}
