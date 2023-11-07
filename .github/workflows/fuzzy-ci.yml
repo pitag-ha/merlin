@@ -11,7 +11,7 @@ jobs:
   approve:
     name: Diff has been approved
     # FIXME: Find a way to run this iff the workflow run was triggered by setting the `fuzzy-diff-looks-good` label.
-    if: github.event_name == 'pull_request' && github.event.action == 'labeled' && contains(github.event.pull_request.labels.*.name, 'fuzzy-diff-looks-good')
+    if: github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'fuzzy-diff-looks-good'
     runs-on: ubuntu-20.04
     permissions:
       issues: write
