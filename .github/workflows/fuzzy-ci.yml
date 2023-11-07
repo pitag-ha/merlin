@@ -8,9 +8,33 @@ on:
     types: [ opened, synchronize, reopened, unlabeled, labeled ]
 
 jobs:
+  artifact_names:
+    runs-on: ubuntu-20.04
+    name: Create persistant artifact names
+    outputs:
+      base_branch_data: ${{ steps.base_branch.outputs.name}} }}
+      merge_branch_data: ${{ steps.merge_branch.outputs.name }}
+      diff_file: ${{ steps.diff.outputs.name }}
+    env:
+      base_branch_sha: ${{ github.event.pull_request.base.sha }}
+      merge_branch_sha: ${{ github.sha }}
+      source_branch_sha: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Create name for base branch data
+        id: base_branch
+        run: echo "name=${{ env.base_branch_sha }}" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Create name for merge branch data
+        id: merge_branch
+        run: echo "name=merge${{ env.base_branch_sha }}-${{ env.source_branch_sha }}" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Create name for diff
+        id: diff
+        run: echo "name=${{ env.base_branch_sha }}...merge${{ env.source_branch_sha }}.diff" | tee -a "$GITHUB_OUTPUT"
+
+
   approve:
     name: Diff has been approved
-    # FIXME: Find a way to run this iff the workflow run was triggered by setting the `fuzzy-diff-looks-good` label.
     if: github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'fuzzy-diff-looks-good'
     runs-on: ubuntu-20.04
     permissions:
@@ -74,7 +98,8 @@ jobs:
   data:
     name: Generate data
     runs-on: ubuntu-20.04
-    if: false
+    if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened' || ( github.event.action == 'unlabeled' && github.event.label.name == 'fuzzy-diff-looks-good'  ) )
+    # if: false
     outputs:
       base_branch_data_name: ${{ env.base_branch_data_name }}
       merge_branch_data_name: ${{ env.merge_branch_data_name }}
