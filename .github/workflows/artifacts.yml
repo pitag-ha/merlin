@@ -1,0 +1,34 @@
+name: Artifacts
+
+on:
+  push:
+    branches: [ trying-download-artifact ]
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Generate artifact
+        run: echo "Hello, World!" > artifact.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: artifact-${{ github.run_number }}
+          path: artifact.txt
+
+  download:
+    # if: github.event.action == "labelled"
+    runs-on: ubuntu-latest
+    needs: upload
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - name: Display artifacts
+        run: ls artifacts
