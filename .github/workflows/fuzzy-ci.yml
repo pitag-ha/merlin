@@ -14,7 +14,7 @@ jobs:
     outputs:
       base_branch_data: ${{ steps.base_branch.outputs.name}}
       merge_branch_data: ${{ steps.merge_branch.outputs.name }}
-      diff_file: ${{ steps.diff.outputs.name }}
+      category_data_diff_file: ${{ steps.cat_diff.outputs.name }}
     env:
       base_branch_sha: ${{ github.event.pull_request.base.sha }}
       merge_branch_sha: ${{ github.sha }}
@@ -29,9 +29,9 @@ jobs:
         id: merge_branch
         run: echo "name=pr$pr_num-merge-branch-$base_branch_sha-$source_branch_sha" | tee -a "$GITHUB_OUTPUT"
 
-      - name: Create name for diff
-        id: diff
-        run: echo "name=pr$pr_num-$base_branch_sha...merge$source_branch_sha.diff" | tee -a "$GITHUB_OUTPUT"
+      - name: Create name for category data diff
+        id: cat_diff
+        run: echo "name=category-data-pr$pr_num-$base_branch_sha...merge$source_branch_sha.diff" | tee -a "$GITHUB_OUTPUT"
 
 
   approve:
@@ -110,7 +110,6 @@ jobs:
       merge_branch_sha: ${{ github.sha }}
       base_branch_data_name: ${{ needs.artifact_names.outputs.base_branch_data }}
       merge_branch_data_name: ${{ needs.artifact_names.outputs.merge_branch_data }}
-      diff_file_name: ${{ needs.artifact_names.outputs.diff_file }}
     strategy:
       matrix:
         commit: ["merge_branch", "base_branch"]
@@ -142,8 +141,8 @@ jobs:
       run: |
         touch data1.json
         touch data2.json
-        echo "whatever ${{matrix.commit}}, run num: ${{ github.run_number }}" > data1.json
-        echo "whetever else ${{matrix.commit}}, run num: ${{ github.run_number }}" > data2.json
+        echo "whatever ${{matrix.commit}}, run num: ${{ github.run_number }}" > category_data.json
+        echo "whetever else ${{matrix.commit}}, run num: ${{ github.run_number }}" > full_responses.json
       working-directory: data
 
     - name: Create name for matrix entry data
@@ -160,40 +159,44 @@ jobs:
     runs-on: ubuntu-20.04
     needs: [data, artifact_names]
     env:
-      base_branch_data_name: ${{ needs.artifact_names.outputs.base_branch_data }}
-      merge_branch_data_name: ${{ needs.artifact_names.outputs.merge_branch_data }}
-      diff_file_name: ${{ needs.artifact_names.outputs.diff_file }}
+      base: ${{ needs.artifact_names.outputs.base_branch_data }}
+      merge: ${{ needs.artifact_names.outputs.merge_branch_data }}
+      cat_data_diff: ${{ needs.artifact_names.outputs.category_data_diff_file }}
     steps:
       - name: Download base branch data
         env:
-          data_dir: ${{ env.base_branch_data_name }}
+          data_dir: ${{ env.base }}
         uses: actions/download-artifact@v3
         with:
           name: ${{ env.data_dir }}
           path: data-${{ env.data_dir }}
       - name: Download merge branch data
         env:
-          data_dir: ${{ env.merge_branch_data_name }}
+          data_dir: ${{ env.merge }}
         uses: actions/download-artifact@v3
         with:
           name: ${{ env.data_dir }}
           path: data-${{ env.data_dir }}
 
-      - name: Write diff
-        id: diff
-        run: (diff -U 1 data-$base_branch_data_name data-$merge_branch_data_name > $diff_file_name && echo "diff_exists=false" | tee -a "$GITHUB_OUTPUT" ) || echo "diff_exists=true" | tee -a "$GITHUB_OUTPUT"
+      - name: Generate category data diff
+        id: category_data_diff
+        run: (diff -U 1 --label="$base" --label="$merge" data-$base/category_data.json data-$merge/category_data.json > $cat_data_diff && echo "diff_exists=false" | tee -a "$GITHUB_OUTPUT" ) || echo "diff_exists=true" | tee -a "$GITHUB_OUTPUT"
+
+      # - name: Remove timestamps from diff
+      #   if: ${{ steps.diff.outputs.diff_exists}}
+      #   run: sed -E -i 's/^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}//' cat_data_diff
 
       - name: Upload diff
-        if: ${{ steps.diff.outputs.diff_exists}}
+        if: ${{ steps.category_data_diff.outputs.diff_exists}}
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ env.diff_file_name }}
-          path: ${{ env.diff_file_name }}
+          name: ${{ env.cat_data_diff }}
+          path: ${{ env.cat_data_diff }}
 
       - name: Return
         run: |
-          if "${{ steps.diff.outputs.diff_exists}}"; then
-            cat $diff_file_name
+          if "${{ steps.category_data_diff.outputs.diff_exists}}"; then
+            cat cat_data_diff
             exit 1
           else
             echo "No diff. All good."
