@@ -8,6 +8,22 @@ on:
     types: [ opened, synchronize, reopened, unlabeled, labeled ]
 
 jobs:
+  download_curl_api_url:
+    runs-on: ubuntu-latest
+    permissions: write-all
+    # Both with and without permissions, I get a 401
+    steps:
+      - name: Run curl
+        run: |
+         curl -LOs -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/pitag-ha/merlin/actions/artifacts/1043780208/zip -D headers.txt
+
+      - name: Print return headers
+        run: cat headers.txt
+      - name: Ls
+        run: ls
+
+      - name: cat
+        run: cat zip
   artifact_names:
     runs-on: ubuntu-20.04
     name: Create persistant artifact names
@@ -36,12 +52,35 @@ jobs:
 
   approve:
     name: Diff has been approved
+    needs: artifact_names
     if: github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'fuzzy-diff-looks-good'
     runs-on: ubuntu-20.04
     permissions:
       issues: write
       pull-requests: write
+    env:
+      gh_api_url: ${{ github.event.pull_request.base.repo.url }}
+      cat_data_diff: ${{ needs.artifact_names.outputs.category_data_diff_file }}
     steps:
+      - name: Check if category data diff exists
+        id: cat_artifact_check
+        run: |
+          meta_data=$(curl -sSL  $gh_api_url/actions/artifacts)
+          (echo "$meta_data" | jq ".artifacts[] | select(.name == \"$cat_data_diff\")" && echo "artifact_exists=true" >> $GITHUB_OUTPUT) || { echo "You can't approve an artifact that doesn't exist :)"; exit 2; }
+
+      - name: Create download dir
+        run: mkdir -p cat_data_diff
+
+      - name: Download category data diff
+        if: ${{ steps.cat_artifact_check.outputs.artifact_exists }}
+        uses: actions/download-artifact@v3
+        with:
+          # name: ${{ env.cat_data_diff }}
+          path: cat_data_diff
+
+      - name: ls
+        run: ls cat_data_diff
+
       - name: Write comment on PR
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -196,7 +235,7 @@ jobs:
       - name: Return
         run: |
           if "${{ steps.category_data_diff.outputs.diff_exists}}"; then
-            cat cat_data_diff
+            cat $cat_data_diff
             exit 1
           else
             echo "No diff. All good."
