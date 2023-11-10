@@ -12,25 +12,26 @@ jobs:
     runs-on: ubuntu-20.04
     name: Create persistant artifact names
     outputs:
-      base_branch_data: ${{ steps.base_branch.outputs.name}} }}
+      base_branch_data: ${{ steps.base_branch.outputs.name}}
       merge_branch_data: ${{ steps.merge_branch.outputs.name }}
       diff_file: ${{ steps.diff.outputs.name }}
     env:
       base_branch_sha: ${{ github.event.pull_request.base.sha }}
       merge_branch_sha: ${{ github.sha }}
       source_branch_sha: ${{ github.event.pull_request.head.sha }}
+      pr_num: ${{ github.event.pull_request.number }}
     steps:
       - name: Create name for base branch data
         id: base_branch
-        run: echo "name=${{ env.base_branch_sha }}" | tee -a "$GITHUB_OUTPUT"
+        run: echo "name=pr$pr_num-base-branch-$base_branch_sha" | tee -a "$GITHUB_OUTPUT"
 
       - name: Create name for merge branch data
         id: merge_branch
-        run: echo "name=merge${{ env.base_branch_sha }}-${{ env.source_branch_sha }}" | tee -a "$GITHUB_OUTPUT"
+        run: echo "name=pr$pr_num-merge-branch-$base_branch_sha-$source_branch_sha" | tee -a "$GITHUB_OUTPUT"
 
       - name: Create name for diff
         id: diff
-        run: echo "name=${{ env.base_branch_sha }}...merge${{ env.source_branch_sha }}.diff" | tee -a "$GITHUB_OUTPUT"
+        run: echo "name=pr$pr_num-$base_branch_sha...merge$source_branch_sha.diff" | tee -a "$GITHUB_OUTPUT"
 
 
   approve:
@@ -97,6 +98,7 @@ jobs:
 
   data:
     name: Generate data
+    needs: artifact_names
     runs-on: ubuntu-20.04
     if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened' || ( github.event.action == 'unlabeled' && github.event.label.name == 'fuzzy-diff-looks-good'  ) )
     # if: false
@@ -106,7 +108,9 @@ jobs:
     env:
       base_branch_sha: ${{ github.event.pull_request.base.sha }}
       merge_branch_sha: ${{ github.sha }}
-      source_branch_sha: ${{ github.event.pull_request.head.sha }}
+      base_branch_data_name: ${{ needs.artifact_names.outputs.base_branch_data }}
+      merge_branch_data_name: ${{ needs.artifact_names.outputs.merge_branch_data }}
+      diff_file_name: ${{ needs.artifact_names.outputs.diff_file }}
     strategy:
       matrix:
         commit: ["merge_branch", "base_branch"]
@@ -142,14 +146,6 @@ jobs:
         echo "whetever else ${{matrix.commit}}, run num: ${{ github.run_number }}" > data2.json
       working-directory: data
 
-    - name: Create name for base branch data
-      run:
-        echo "base_branch_data_name=${{ env.base_branch_sha }}" >> $GITHUB_ENV
-
-    - name: Create name for merge branch data
-      run: |
-        echo "merge_branch_data_name=merge${{ env.base_branch_sha }}-${{ env.source_branch_sha }}" >> $GITHUB_ENV
-
     - name: Create name for matrix entry data
       run: echo "data_name=$${{ matrix.commit }}_data_name" >> $GITHUB_ENV
 
@@ -162,11 +158,11 @@ jobs:
   diff:
     name: Generate diff
     runs-on: ubuntu-20.04
-    needs: data
+    needs: [data, artifact_names]
     env:
-      base_branch_data_name: ${{ needs.data.outputs.base_branch_data_name }}
-      merge_branch_data_name: ${{ needs.data.outputs.merge_branch_data_name }}
-      diff_file: ${{ github.event.pull_request.base.sha }}..merge${{ github.event.pull_request.base.sha }}.diff
+      base_branch_data_name: ${{ needs.artifact_names.outputs.base_branch_data }}
+      merge_branch_data_name: ${{ needs.artifact_names.outputs.merge_branch_data }}
+      diff_file_name: ${{ needs.artifact_names.outputs.diff_file }}
     steps:
       - name: Download base branch data
         env:
@@ -185,19 +181,19 @@ jobs:
 
       - name: Write diff
         id: diff
-        run: (diff -U 1 data-$base_branch_data_name data-$merge_branch_data_name > $diff_file && echo "diff_exists=fase" | tee -a "$GITHUB_OUTPUT" ) || echo "diff_exists=true" | tee -a "$GITHUB_OUTPUT"
+        run: (diff -U 1 data-$base_branch_data_name data-$merge_branch_data_name > $diff_file_name && echo "diff_exists=false" | tee -a "$GITHUB_OUTPUT" ) || echo "diff_exists=true" | tee -a "$GITHUB_OUTPUT"
 
       - name: Upload diff
         if: ${{ steps.diff.outputs.diff_exists}}
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ env.diff_file }}
-          path: ${{ env.diff_file }}
+          name: ${{ env.diff_file_name }}
+          path: ${{ env.diff_file_name }}
 
       - name: Return
         run: |
           if "${{ steps.diff.outputs.diff_exists}}"; then
-            cat $diff_file
+            cat $diff_file_name
             exit 1
           else
             echo "No diff. All good."
