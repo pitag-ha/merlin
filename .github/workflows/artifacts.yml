@@ -11,7 +11,7 @@ jobs:
     steps:
       - name: Run curl
         run: |
-         curl -LO -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" https://api.github.com/repos/pitag-ha/merlin/actions/artifacts/1043780208/zip
+         curl -LO -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/pitag-ha/merlin/actions/artifacts/104378020800000000000000/zip
 
       - name: Ls
         run: ls
