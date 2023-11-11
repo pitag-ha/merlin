@@ -15,7 +15,7 @@ jobs:
         run: echo "Hello, World!" > artifact.txt
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v2
         with:
           name: artifact-${{ github.run_number }}
           path: artifact.txt
@@ -26,9 +26,10 @@ jobs:
     needs: upload
     steps:
       - name: Download artifact
-        uses: actions/download-artifact@v3
+        uses: dawidd6/action-download-artifact@v2
         with:
-          path: artifacts
+          name: artifact-${{ github.run_number }}
+          # check_artifacts: true
 
       - name: Display artifacts
         run: ls artifacts
