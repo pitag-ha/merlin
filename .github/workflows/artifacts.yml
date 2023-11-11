@@ -5,31 +5,44 @@ on:
     branches: [ trying-download-artifact ]
 
 jobs:
-  upload:
+  download_curl:
     runs-on: ubuntu-latest
+    permissions: write-all
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Run curl
+        run: |
+         curl -LO -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" https://api.github.com/repos/pitag-ha/merlin/actions/artifacts/1043780208/zip
 
-      - name: Generate artifact
-        run: echo "Hello, World!" > artifact.txt
+      - name: Ls
+        run: ls
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v2
-        with:
-          name: artifact-${{ github.run_number }}
-          path: artifact.txt
+      - name: cat
+        run: cat zip
+  # upload:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v3
 
-  download:
-    # if: github.event.action == "labelled"
-    runs-on: ubuntu-latest
-    needs: upload
-    steps:
-      - name: Download artifact
-        uses: dawidd6/action-download-artifact@v2
-        with:
-          name: artifact-${{ github.run_number }}
-          # check_artifacts: true
+  #     - name: Generate artifact
+  #       run: echo "Hello, World!" > artifact.txt
 
-      - name: Display artifacts
-        run: ls artifacts
+  #     - name: Upload artifact
+  #       uses: actions/upload-artifact@v2
+  #       with:
+  #         name: artifact-${{ github.run_number }}
+  #         path: artifact.txt
+
+  # download:
+  #   # if: github.event.action == "labelled"
+  #   runs-on: ubuntu-latest
+  #   needs: upload
+  #   steps:
+  #     - name: Download artifact
+  #       uses: dawidd6/action-download-artifact@v2
+  #       with:
+  #         name: artifact-${{ github.run_number }}
+  #         # check_artifacts: true
+
+  #     - name: Display artifacts
+  #       run: ls artifacts
