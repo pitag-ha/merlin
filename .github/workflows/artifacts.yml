@@ -5,48 +5,68 @@ on:
     branches: [ trying-download-artifact ]
 
 jobs:
-  # download_curl:
-  #   runs-on: ubuntu-latest
-  #   permissions: write-all
-  #   steps:
-  #     - name: Run curl
-  #       run: |
-  #        curl -LO -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/pitag-ha/merlin/actions/artifacts/1043780208/zip
-
-  #     - name: Ls
-  #       run: ls
-
-  #     - name: cat
-  #       run: cat zip
-  upload:
+  download_curl_api_url:
     runs-on: ubuntu-latest
+    permissions: write-all
+    # Both with and without permissions, I get a 401
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Run curl
+        run: |
+         curl -LOs -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/pitag-ha/merlin/actions/artifacts/1043780208/zip -D headers.txt
 
-      - name: Generate artifact
-        run: echo "Hello, World!" > artifact.txt
+      - name: Print return headers
+        run: cat headers.txt
+      - name: Ls
+        run: ls
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: artifact-${{ github.run_number }}
-          path: artifact.txt
+      - name: cat
+        run: cat zip
 
-  download:
-    # if: github.event.action == "labelled"
+
+
+
+  download_curl_manual_url:
     runs-on: ubuntu-latest
-    needs: upload
     permissions: write-all
     steps:
-      - name: Sleep
-        run: sleep 60
-      - name: Download artifact
-        uses: dawidd6/action-download-artifact@v2
-        with:
-          workflow: ${{ github.event.workflow_run.workflow_id }}
-          search_artifacts: true
-          check_artifacts: true
+      - name: Run curl
+        run: |
+         curl -LO -H "Authorization: Bearer $GITHUB_TOKEN" https://github.com/pitag-ha/merlin/suites/18108450661/artifacts/1043818399
 
-      - name: Display artifacts
-        run: ls artifacts
+      - name: Ls
+        run: ls
+
+      - name: cat
+        run: cat 1043818399
+  # upload:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v3
+
+  #     - name: Generate artifact
+  #       run: echo "Hello, World!" > artifact.txt
+
+  #     - name: Upload artifact
+  #       uses: actions/upload-artifact@v3
+  #       with:
+  #         name: artifact-${{ github.run_number }}
+  #         path: artifact.txt
+
+  # download:
+  #   # if: github.event.action == "labelled"
+  #   runs-on: ubuntu-latest
+  #   needs: upload
+  #   permissions: write-all
+  #   steps:
+  #     - name: Sleep
+  #       run: sleep 60
+  #     - name: Download artifact
+  #       uses: dawidd6/action-download-artifact@v2
+  #       with:
+  #         workflow: ${{ github.event.workflow_run.workflow_id }}
+  #         search_artifacts: true
+  #         check_artifacts: true
+
+  #     - name: Display artifacts
+  #       run: ls artifacts
