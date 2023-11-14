@@ -19,13 +19,19 @@ jobs:
           all_artifacts=$(curl -sSL  $gh_api_artifacts_url)
           category_data_artifact=$(echo "$all_artifacts" | jq "first(.artifacts[] | select(.name == \"$cat_data_diff\")  )")
           id=$(echo "$category_data_artifact" | jq ".id")
-          echo "id=\"$id\"" | tee -a $GITHUB_OUTPUT
+          echo "id=$id" | tee -a $GITHUB_OUTPUT
+
+      - name: Print the URL
+        env:
+          id: ${{ steps.cat_artifact.outputs.id }}
+        run: echo "https://api.github.com/repos/pitag-ha/merlin/actions/artifacts/$id/zip"
+
       - name: Run curl
         env:
           id: ${{ steps.cat_artifact.outputs.id }}
           # id: "1043780208"
         run: |
-         curl -LOs -H "Authorization: Bearer ${{ secrets.FUZZY_CI_TOKEN }}" https://api.github.com/repos/pitag-ha/merlin/actions/artifacts/$id/zip -D headers.txt
+         curl -LOs -H "Authorization: Bearer ${{ secrets.FUZZY_CI_TOKEN }}" "https://api.github.com/repos/pitag-ha/merlin/actions/artifacts/$id/zip" -D headers.txt
 
       - name: Print return headers
         run: cat headers.txt
