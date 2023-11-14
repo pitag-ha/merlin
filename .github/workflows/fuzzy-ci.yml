@@ -88,9 +88,9 @@ jobs:
           all_artifacts=$(curl -sSL  $gh_api_artifacts_url)
           category_data_artifact=$(echo "$meta_data" | jq "first(.artifacts[] | select(.name == \"$cat_data_diff\")  )")
           id=$(echo "$category_data_artifact" | jq ".id")
-          echo "id=\"$id\"" >> $GITHUB_OUTPUT
+          echo "id=\"$id\"" | tee -a $GITHUB_OUTPUT
           workflow_run=$(echo $category_data_artifact | jq ".workflow_run | .id")
-          echo "workflow_run=\"$workflow_run\"" >> $GITHUB_OUTPUT
+          echo "workflow_run=\"$workflow_run\"" | tee -a $GITHUB_OUTPUT
 
       - name: Check if category data diff exists
         env:
