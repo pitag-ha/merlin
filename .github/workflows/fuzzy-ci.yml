@@ -133,6 +133,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           workflow_run: ${{ steps.cat_artifact.outputs.workflow_run }}
           diff_id: ${{ steps.cat_artifact.outputs.id }}
+        permissions: write-all
         run: |
           body=$(cat <<EOF
           This PR introduces a change in some Merlin query response(s), which has been captured by the fuzzy-test CI. The fuzzy-test diffs of the CI have been approved. Info about the diffs that have been approved:
