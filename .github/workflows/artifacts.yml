@@ -11,9 +11,19 @@ jobs:
     # permissions: write-all
     # Both with and without permissions, I get a 401 with $GITHUB_TOKEN. Use own token instead. Probable problem: Can't give GITHUB_TOKEN permissions in repo scope.
     steps:
+      - name: Ouput id
+        id: cat_artifact
+        run: |
+          cat_data_diff=category-data-pr6-ff3afe34141c544c3f78c1ca03e8bcb3b8c8da74...merge31fbadf749438b6d9f56992525378265dafc3691.diff
+          gh_api_artifacts_url=https://api.github.com/repos/pitag-ha/merlin/actions/artifacts
+          all_artifacts=$(curl -sSL  $gh_api_artifacts_url)
+          category_data_artifact=$(echo "$all_artifacts" | jq "first(.artifacts[] | select(.name == \"$cat_data_diff\")  )")
+          id=$(echo "$category_data_artifact" | jq ".id")
+          echo "id=\"$id\"" | tee -a $GITHUB_OUTPUT
       - name: Run curl
         env:
-          id: "1043780208"
+          id: ${{ steps.cat_artifact.outputs.id }}
+          # id: "1043780208"
         run: |
          curl -LOs -H "Authorization: Bearer ${{ secrets.FUZZY_CI_TOKEN }}" https://api.github.com/repos/pitag-ha/merlin/actions/artifacts/$id/zip -D headers.txt
 
