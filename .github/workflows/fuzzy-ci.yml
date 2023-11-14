@@ -107,8 +107,8 @@ jobs:
 
       - name: Download category data diff
         env:
-          # id: ${{ steps.cat_artifact.outputs.id }}
-          id: "1049339495"
+          id: ${{ steps.cat_artifact.outputs.id }}
+          # id: "1049339495"
         run: |
          # Doing this manually, since actions/download-artifact only works on the same workflow run on which the artifact was uploaded
          # Using our own token, because $GITHUB_TOKEN can't be granted repo scope permissions
@@ -126,14 +126,30 @@ jobs:
         id: category_data_diff_hash
         run: |
           hash=sha256sum $cat_data_diff | awk '{print $1}'
-          echo "sha=$hash" | tee -a $GITHUB_OUTPUT
+          echo "hash=$hash" | tee -a $GITHUB_OUTPUT
 
-      # - name: Write comment on PR
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   run: |
-      #     curl -LsX POST -H "Authorization: Bearer $GITHUB_TOKEN" -d '{"body":"Hello :)"}' ${{ github.event.pull_request.comments_url}}
-      #     echo $?
+      - name: Write comment on PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          workflow_run: ${{ steps.cat_artifact.outputs.workflow_run }}
+          diff_id: ${{ steps.cat_artifact.outputs.id }}
+        run: |
+          body=$(cat <<EOF
+          This PR introduces a change in some Merlin query response(s), which has been captured by the fuzzy-test CI. The fuzzy-test diffs of the CI have been approved. Info about the diffs that have been approved:
+          - Distilled data:
+              - Diff: https://github.com/pitag-ha/merlin/suites/$workflow_run/artifacts/$diff_id
+              - Diff 256-sha: {{ steps.category_data_diff_hash.outputs.hash }}
+              - Data on target branch (\`master\` at (...)): (...)
+              - Data on PR merge branch, i.e. merge result of source branch (at (...)) and target branch: (...)
+          - Full responses:
+              - Diff: (...)
+              - Diff 256-sha: my-full-responses-sha
+              - Data on target branch (\`master\` at (...)): (...)
+              - Data on PR merge branch, i.e. merge result of source branch (at (...)) and target branch: (...)
+          EOF
+          )
+          curl -LsX POST -H "Authorization: Bearer $GITHUB_TOKEN" -d '{"body":\"$body\"}' ${{ github.event.pull_request.comments_url}}
+          echo $?
   debugging:
     name: debugging
     runs-on: ubuntu-20.04
