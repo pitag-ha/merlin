@@ -7,6 +7,9 @@ on:
     branches: [ fuzzy-ci-artefacts-approach ]
     types: [ opened, synchronize, reopened, unlabeled, labeled ]
 
+env:
+  LABEL_NAME: "fuzzy-diff-looks-good"
+
 jobs:
   # download_curl_api_url:
   #   runs-on: ubuntu-latest
@@ -78,30 +81,32 @@ jobs:
     needs: artifact_names
     if: github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'fuzzy-diff-looks-good'
     runs-on: ubuntu-20.04
+    permissions: write-all
     env:
       gh_api_artifacts_url: ${{ github.event.pull_request.base.repo.url }}/actions/artifacts
       cat_data_diff: ${{ needs.artifact_names.outputs.category_data_diff_file }}
     steps:
-      - name: Retreive category data diff
+      - name: Retreive category data diff meta-data
         id: cat_artifact
         run: |
           all_artifacts=$(curl -sSL  $gh_api_artifacts_url)
-          category_data_artifact=$(echo "$meta_data" | jq "first(.artifacts[] | select(.name == \"$cat_data_diff\")  )")
+          category_data_artifact=$(echo "$all_artifacts" | jq "first(.artifacts[] | select(.name == \"$cat_data_diff\")  )")
           id=$(echo "$category_data_artifact" | jq ".id")
-          echo "id=\"$id\"" >> $GITHUB_OUTPUT
+          echo "id=$id" | tee -a $GITHUB_OUTPUT
           workflow_run=$(echo $category_data_artifact | jq ".workflow_run | .id")
-          echo "workflow_run=\"$workflow_run\"" >> $GITHUB_OUTPUT
+          echo "workflow_run=$workflow_run" | tee -a $GITHUB_OUTPUT
 
       - name: Check if category data diff exists
         env:
           id: ${{ steps.cat_artifact.outputs.id }}
         run: |
+          # FIXME (?)
           if [ -z $id ]; then
             echo "You seem to have tried to approve a diff that doesn't exist yet."
             # TODO: Remove the label
             exit 1
           else
-            echo "Category data diff exists exists"
+            echo "Category data diff exists"
           fi
 
       - name: Download category data diff
@@ -111,74 +116,39 @@ jobs:
          # Doing this manually, since actions/download-artifact only works on the same workflow run on which the artifact was uploaded
          # Using our own token, because $GITHUB_TOKEN can't be granted repo scope permissions
          curl -sSLO -H "Authorization: Bearer ${{ secrets.FUZZY_CI_TOKEN }}" $gh_api_artifacts_url/$id/zip -D headers.txt
-        #  curl -sSL -H "Authorization: Bearer ${{ secrets.FUZZY_CI_TOKEN }}" $gh_api_artifacts_url/"1047137275"/zip -D headers.txt
 
-      - name: Cat header
-        run: cat headers.txt
-
-      - name: Try to unzip
+      - name: Try to unzip downloaded category data diff
         run: |
           unzip zip || (echo "Download of diff artifact failed" && cat headers.txt && cat zip && exit 1)
 
-      - name: Compute category data diff sha
+      - name: Compute category data diff hash
         id: category_data_diff_hash
         run: |
-          hash=sha256sum $cat_data_diff | awk '{print $1}'
-          echo "sha=$hash" | tee -a $GITHUB_OUTPUT
+          hash=$(sha256sum $cat_data_diff | awk '{print $1}')
+          echo "hash=$hash" | tee -a $GITHUB_OUTPUT
 
-      # - name: Write comment on PR
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   run: |
-      #     curl -LsX POST -H "Authorization: Bearer $GITHUB_TOKEN" -d '{"body":"Hello :)"}' ${{ github.event.pull_request.comments_url}}
-      #     echo $?
-  debugging:
-    name: debugging
-    runs-on: ubuntu-20.04
-    permissions: write-all
-    env:
-      api_url: ${{ github.event.pull_request.base.repo.url }}
-    steps:
-      - name: Get artifacts meta-data
-        id: meta_data
+      - name: Write comment on PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          workflow_run: ${{ steps.cat_artifact.outputs.workflow_run }}
+          diff_id: ${{ steps.cat_artifact.outputs.id }}
         run: |
-          meta_data=$(curl -sSL  $api_url/actions/artifacts)
-          last_diff_artifact=$(echo $meta_data | jq -r '.artifacts | map(select(.name | endswith(".diff"))) | max_by(.created_at)')
-          echo "diff_name=$(echo $last_diff_artifact | jq -r '.name')" >> $GITHUB_ENV
-          echo "run_id=$(echo $last_diff_artifact | jq -r '.workflow_run.id')" >> $GITHUB_ENV
-
-
-          # curl -sSLJO $api_url/actions/artifacts/$artifact_id/zip
-
-      - name: Download last diff
-        uses: dawidd6/action-download-artifact@v2
-        with:
-          run_id: ${{ env.run_id}}
-          name: ${{ env.diff_name}}
-
-      - name: Debugging
-        run: |
-          echo "diff_name: ${{ env.diff_name}}"
-          echo "run_id: ${{ env.run_id}}"
-
-      # - name: Log
-      #   run: cat zip
-
-      # - name: Unzip
-      #   run: unzip -q zip
-
-      - name: ls
-        run: ls
-
-      - name: cat diff
-        run: cat $diff_name
-
-
-      # - name: url
-      #   run: echo ${{ github.event.pull_request.base.repo.url }}
-      # - name: debugging
-      #   run: jq '.' "${{ toJson(github.event.pull_request) }}""
-
+          body=$(cat <<EOF
+          This PR introduces a change in some Merlin query response(s), which has been captured by the fuzzy-test CI. The fuzzy-test diffs of the CI have been approved. Info about the diffs that have been approved:
+          - Distilled data:
+              - Diff: https://github.com/pitag-ha/merlin/suites/$workflow_run/artifacts/$diff_id
+              - Diff 256-sha: {{ steps.category_data_diff_hash.outputs.hash }}
+              - Data on target branch (\`master\` at (...)): (...)
+              - Data on PR merge branch, i.e. merge result of source branch (at (...)) and target branch: (...)
+          - Full responses:
+              - Diff: (...)
+              - Diff 256-sha: my-full-responses-sha
+              - Data on target branch (\`master\` at (...)): (...)
+              - Data on PR merge branch, i.e. merge result of source branch (at (...)) and target branch: (...)
+          EOF
+          )
+          curl -LsX POST -H "Authorization: Bearer $GITHUB_TOKEN" -d '{"body":\"$body\"}' ${{ github.event.pull_request.comments_url}}
+          echo $?
 
   data:
     name: Generate data
@@ -278,6 +248,11 @@ jobs:
           name: ${{ env.cat_data_diff }}
           path: ${{ env.cat_data_diff }}
 
+  output:
+    name: Evaluate diff
+    runs-on: ubuntu-20.04
+    needs: [diff, artifact_names]
+    steps:
       - name: Return
         run: |
           if "${{ steps.category_data_diff.outputs.diff_exists}}"; then
