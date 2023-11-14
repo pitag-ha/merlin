@@ -106,7 +106,8 @@ jobs:
 
       - name: Download category data diff
         env:
-          id: ${{ steps.cat_artifact.outputs.id }}
+          # id: ${{ steps.cat_artifact.outputs.id }}
+          id: "1043780208"
         run: |
          # Doing this manually, since actions/download-artifact only works on the same workflow run on which the artifact was uploaded
          # Using our own token, because $GITHUB_TOKEN can't be granted repo scope permissions
