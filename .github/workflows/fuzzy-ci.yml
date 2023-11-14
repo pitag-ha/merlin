@@ -86,7 +86,7 @@ jobs:
         id: cat_artifact
         run: |
           all_artifacts=$(curl -sSL  $gh_api_artifacts_url)
-          category_data_artifact=$(echo "$meta_data" | jq "first(.artifacts[] | select(.name == \"$cat_data_diff\")  )")
+          category_data_artifact=$(echo "$all_artifacts" | jq "first(.artifacts[] | select(.name == \"$cat_data_diff\")  )")
           id=$(echo "$category_data_artifact" | jq ".id")
           echo "id=\"$id\"" | tee -a $GITHUB_OUTPUT
           workflow_run=$(echo $category_data_artifact | jq ".workflow_run | .id")
