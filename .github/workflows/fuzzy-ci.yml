@@ -96,18 +96,19 @@ jobs:
         env:
           id: ${{ steps.cat_artifact.outputs.id }}
         run: |
+          # FIXME (?)
           if [ -z $id ]; then
             echo "You seem to have tried to approve a diff that doesn't exist yet."
             # TODO: Remove the label
             exit 1
           else
-            echo "Category data diff exists exists"
+            echo "Category data diff exists"
           fi
 
       - name: Download category data diff
         env:
           # id: ${{ steps.cat_artifact.outputs.id }}
-          id: "1043780208"
+          id: "1049339495"
         run: |
          # Doing this manually, since actions/download-artifact only works on the same workflow run on which the artifact was uploaded
          # Using our own token, because $GITHUB_TOKEN can't be granted repo scope permissions
