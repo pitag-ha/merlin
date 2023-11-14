@@ -1,0 +1,35 @@
+name: Fuzzy CI
+
+on:
+  push:
+    branches: [ try-sending-commant-via-gh-api ]
+
+jobs:
+  comment:
+    name: Write a comment
+    runs-on: ubuntu-20.04
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Write comment on PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # body=$(cat <<EOF
+          # This PR introduces a change in some Merlin query response(s), which has been captured by the fuzzy-test CI. The fuzzy-test diffs of the CI have been approved. Info about the diffs that have been approved:
+          # - Distilled data:
+          #     - Diff: https://github.com/pitag-ha/merlin/suites/$workflow_run/artifacts/$diff_id
+          #     - Diff 256-sha: {{ steps.category_data_diff_hash.outputs.hash }}
+          #     - Data on target branch (\`master\` at (...)): (...)
+          #     - Data on PR merge branch, i.e. merge result of source branch (at (...)) and target branch: (...)
+          # - Full responses:
+          #     - Diff: (...)
+          #     - Diff 256-sha: my-full-responses-sha
+          #     - Data on target branch (\`master\` at (...)): (...)
+          #     - Data on PR merge branch, i.e. merge result of source branch (at (...)) and target branch: (...)
+          # EOF
+          # )
+
+          curl -LsX POST -H "Authorization: Bearer $GITHUB_TOKEN" -d '{"body":"Hello :)"}' https://api.github.com/repos/pitag-ha/merlin/issues/6/comments
+          echo $?
