@@ -85,9 +85,12 @@ jobs:
       - name: Retreive category data diff
         id: cat_artifact
         run: |
-          meta_data=$(curl -sSL  $gh_api_artifacts_url)
-          id=$(echo "$meta_data" | jq ".artifacts[] | select(.name == \"$cat_data_diff\") .id ")
+          all_artifacts=$(curl -sSL  $gh_api_artifacts_url)
+          category_data_artifact=$(echo "$meta_data" | jq "first(.artifacts[] | select(.name == \"$cat_data_diff\")  )")
+          id=$(echo "$category_data_artifact" | jq ".id")
           echo "id=\"$id\"" >> $GITHUB_OUTPUT
+          workflow_run=$(echo $category_data_artifact | jq ".workflow_run | .id")
+          echo "workflow_run=\"$workflow_run\"" >> $GITHUB_OUTPUT
 
       - name: Check if category data diff exists
         env:
@@ -101,14 +104,27 @@ jobs:
             echo "Category data diff exists exists"
           fi
 
-      - name: Run curl
+      - name: Download category data diff
         env:
           id: ${{ steps.cat_artifact.outputs.id }}
         run: |
-         curl -sSL -H "Authorization: Bearer ${{ secrets.FUZZY_CI_TOKEN }}" $gh_api_artifacts_url/$id/zip -D headers.txt
+         # Doing this manually, since actions/download-artifact only works on the same workflow run on which the artifact was uploaded
+         # Using our own token, because $GITHUB_TOKEN can't be granted repo scope permissions
+         curl -sSLO -H "Authorization: Bearer ${{ secrets.FUZZY_CI_TOKEN }}" $gh_api_artifacts_url/$id/zip -D headers.txt
+        #  curl -sSL -H "Authorization: Bearer ${{ secrets.FUZZY_CI_TOKEN }}" $gh_api_artifacts_url/"1047137275"/zip -D headers.txt
 
       - name: Cat header
         run: cat headers.txt
+
+      - name: Try to unzip
+        run: |
+          unzip zip || (echo "Download of diff artifact failed" && cat headers.txt && cat zip && exit 1)
+
+      - name: Compute category data diff sha
+        id: category_data_diff_hash
+        run: |
+          hash=sha256sum $cat_data_diff | awk '{print $1}'
+          echo "sha=$hash" | tee -a $GITHUB_OUTPUT
 
       # - name: Write comment on PR
       #   env:
@@ -248,6 +264,7 @@ jobs:
 
       - name: Generate category data diff
         id: category_data_diff
+        # To guarantee idempotence in diff generation, we're using `--labels` to avoids time stamps
         run: (diff -U 1 --label="$base" --label="$merge" data-$base/category_data.json data-$merge/category_data.json > $cat_data_diff && echo "diff_exists=false" | tee -a "$GITHUB_OUTPUT" ) || echo "diff_exists=true" | tee -a "$GITHUB_OUTPUT"
 
       # - name: Remove timestamps from diff
