@@ -7,37 +7,39 @@ on:
 jobs:
   download_curl_api_url:
     runs-on: ubuntu-latest
-    permissions: write-all
-    # Both with and without permissions, I get a 401
+    # env:
+    # permissions: write-all
+    # Both with and without permissions, I get a 401 with $GITHUB_TOKEN. Use own token instead. Probable problem: Can't give GITHUB_TOKEN permissions in repo scope.
     steps:
       - name: Run curl
+        env:
+          id: "1043780208"
         run: |
-         curl -LOs -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/pitag-ha/merlin/actions/artifacts/1043780208/zip -D headers.txt
+         curl -LOs -H "Authorization: Bearer ${{ secrets.FUZZY_CI_TOKEN }}" https://api.github.com/repos/pitag-ha/merlin/actions/artifacts/$id/zip -D headers.txt
 
       - name: Print return headers
         run: cat headers.txt
       - name: Ls
         run: ls
 
-      - name: cat
-        run: cat zip
+      - name: Try unzip
+        run: unzip zip || cat zip
 
 
 
+  # download_curl_manual_url:
+  #   runs-on: ubuntu-latest
+  #   permissions: write-all
+  #   steps:
+  #     - name: Run curl
+  #       run: |
+  #        curl -LO -H "Authorization: Bearer $GITHUB_TOKEN" https://github.com/pitag-ha/merlin/suites/18108450661/artifacts/1043818399
 
-  download_curl_manual_url:
-    runs-on: ubuntu-latest
-    permissions: write-all
-    steps:
-      - name: Run curl
-        run: |
-         curl -LO -H "Authorization: Bearer $GITHUB_TOKEN" https://github.com/pitag-ha/merlin/suites/18108450661/artifacts/1043818399
+  #     - name: Ls
+  #       run: ls
 
-      - name: Ls
-        run: ls
-
-      - name: cat
-        run: cat 1043818399
+  #     - name: cat
+  #       run: cat 1043818399
   # upload:
   #   runs-on: ubuntu-latest
   #   steps:
