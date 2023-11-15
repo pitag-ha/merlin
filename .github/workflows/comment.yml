@@ -12,12 +12,11 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - name: Write comment on PR
+      - name: Write HTTP body to file
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           workflow_run: <workflow_run_id>
           diff_id: <diff_id>
-          message: |
+          msg: |
             This PR introduces a change in some Merlin query response(s), which has been captured by the fuzzy-test CI. The fuzzy-test diffs of the CI have been approved. Info about the diffs that have been approved:
             - Distilled data:
                 - Diff: https://github.com/pitag-ha/merlin/suites//artifacts/
@@ -30,12 +29,13 @@ jobs:
                 - Data on target branch (`master` at (...)): (...)
                 - Data on PR merge branch, i.e. merge result of source branch (at (...)) and target branch: (...)
         run: |
-          echo "$message"
-          body=$( echo "$message" | jq -Rsa . )
-          echo $body
-          printf '{"body": "%s"}' "$body" > body.json
-          curl -LsX POST -H "Authorization: Bearer $GITHUB_TOKEN" -d body.json https://api.github.com/repos/pitag-ha/merlin/issues/6/comments
-          echo "'{"body": "'"$body"'"}'"
+          jq -n --arg msg "$msg" '{ body: $msg }' | tee -a body.json
+
+      - name: Write comment on PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -LsX POST -H "Authorization: Bearer $GITHUB_TOKEN" -d @body.json https://api.github.com/repos/pitag-ha/merlin/issues/6/comments
           echo $?
 
         # run: |
