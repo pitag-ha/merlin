@@ -77,7 +77,7 @@ jobs:
         run: echo "name=category-data-pr$pr_num-$base_branch_sha...merge$source_branch_sha.diff" | tee -a "$GITHUB_OUTPUT"
 
   approve:
-    name: Diff has been approved
+    name: Approve diff
     needs: artifact_names
     if: github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'fuzzy-diff-looks-good'
     runs-on: ubuntu-20.04
@@ -102,7 +102,7 @@ jobs:
         run: |
           # FIXME (?)
           if [ -z $id ]; then
-            echo "You seem to have tried to approve a diff that doesn't exist yet."
+            echo "You seem to have tried to approve a diff that doesn't exist yet.\nWait for the diff to have been generated and then try again."
             # TODO: Remove the label
             exit 1
           else
@@ -127,17 +127,18 @@ jobs:
           hash=$(sha256sum $cat_data_diff | awk '{print $1}')
           echo "hash=$hash" | tee -a $GITHUB_OUTPUT
 
-      - name: Write comment on PR
+      - name: Write HTTP body to file
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          workflow_run: ${{ steps.cat_artifact.outputs.workflow_run }}
-          diff_id: ${{ steps.cat_artifact.outputs.id }}
+          cat_workflow_run: ${{ steps.cat_artifact.outputs.workflow_run }}
+          cat_diff_id: ${{ steps.cat_artifact.outputs.id }}
+          cat_hash: ${{ steps.category_data_diff_hash.outputs.hash }}
+
         run: |
-          body=$(cat <<EOF
+          msg=$( cat <<EOF
           This PR introduces a change in some Merlin query response(s), which has been captured by the fuzzy-test CI. The fuzzy-test diffs of the CI have been approved. Info about the diffs that have been approved:
           - Distilled data:
-              - Diff: https://github.com/pitag-ha/merlin/suites/$workflow_run/artifacts/$diff_id
-              - Diff 256-sha: {{ steps.category_data_diff_hash.outputs.hash }}
+              - Diff: https://github.com/pitag-ha/merlin/suites/$cat_workflow_run/artifacts/$cat_diff_id
+              - Diff 256-sha: $cat_hash
               - Data on target branch (\`master\` at (...)): (...)
               - Data on PR merge branch, i.e. merge result of source branch (at (...)) and target branch: (...)
           - Full responses:
@@ -147,7 +148,13 @@ jobs:
               - Data on PR merge branch, i.e. merge result of source branch (at (...)) and target branch: (...)
           EOF
           )
-          curl -LsX POST -H "Authorization: Bearer $GITHUB_TOKEN" -d '{"body":\"$body\"}' ${{ github.event.pull_request.comments_url}}
+          jq -n --arg msg "$msg" '{ body: $msg }' | tee -a body.json
+
+      - name: Write comment on PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -LsX POST -H "Authorization: Bearer $GITHUB_TOKEN" -d @body.json https://api.github.com/repos/pitag-ha/merlin/issues/6/comments
           echo $?
 
   data:
