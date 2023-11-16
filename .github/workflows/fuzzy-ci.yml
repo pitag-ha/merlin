@@ -112,10 +112,11 @@ jobs:
       - name: Download category data diff
         env:
           id: ${{ steps.cat_artifact.outputs.id }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
          # Doing this manually, since actions/download-artifact only works on the same workflow run on which the artifact was uploaded
          # Using our own token, because $GITHUB_TOKEN can't be granted repo scope permissions
-         curl -sSLO -H "Authorization: Bearer ${{ secrets.FUZZY_CI_TOKEN }}" $gh_api_artifacts_url/$id/zip -D headers.txt
+         curl -sSLO -H "Authorization: Bearer $GITHUB_TOKEN" $gh_api_artifacts_url/$id/zip -D headers.txt
 
       - name: Try to unzip downloaded category data diff
         run: |
