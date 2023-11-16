@@ -115,7 +115,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
          # Doing this manually, since actions/download-artifact only works on the same workflow run on which the artifact was uploaded
-         # Using our own token, because $GITHUB_TOKEN can't be granted repo scope permissions
          curl -sSLO -H "Authorization: Bearer $GITHUB_TOKEN" $gh_api_artifacts_url/$id/zip -D headers.txt
 
       - name: Try to unzip downloaded category data diff
@@ -130,23 +129,26 @@ jobs:
 
       - name: Write HTTP body to file
         env:
+          repo_url: ${{ github.event.repository.html_url }}
           cat_workflow_run: ${{ steps.cat_artifact.outputs.workflow_run }}
           cat_diff_id: ${{ steps.cat_artifact.outputs.id }}
           cat_hash: ${{ steps.category_data_diff_hash.outputs.hash }}
 
         run: |
           msg=$( cat <<EOF
-          This PR introduces a change in some Merlin query response(s), which has been captured by the fuzzy-test CI. The fuzzy-test diffs of the CI have been approved. Info about the diffs that have been approved:
+          This PR introduces a change in some Merlin query response(s), which has been captured by the fuzzy-test CI. The fuzzy-test diffs of the CI have been approved in its following state:
           - Distilled data:
-              - Diff: https://github.com/pitag-ha/merlin/suites/$cat_workflow_run/artifacts/$cat_diff_id
+              - Data can be downloaded from $repo_url/actions/runs/$cat_workflow_run
+                - Artifact name with data on target branch (i.e. \`master\` at (...)): (...)
+                - Artifact name with data on PR merge branch, i.e. merge result of source branch (at (...)) and target branch: (...)
+                - Artifact name with diff between the two:
               - Diff 256-sha: $cat_hash
-              - Data on target branch (\`master\` at (...)): (...)
-              - Data on PR merge branch, i.e. merge result of source branch (at (...)) and target branch: (...)
           - Full responses:
-              - Diff: (...)
-              - Diff 256-sha: my-full-responses-sha
-              - Data on target branch (\`master\` at (...)): (...)
-              - Data on PR merge branch, i.e. merge result of source branch (at (...)) and target branch: (...)
+              - Data can be downloaded from $repo_url/actions/runs/$cat_workflow_run
+                - Artifact name with data on target branch (i.e. \`master\` at (...)): (...)
+                - Artifact name with data on PR merge branch, i.e. merge result of source branch (at (...)) and target branch: (...)
+                - Artifact name with diff between the two:
+              - Diff 256-sha: <full_reponses_hash>
           EOF
           )
           jq -n --arg msg "$msg" '{ body: $msg }' | tee -a body.json
