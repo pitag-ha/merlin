@@ -1,0 +1,19 @@
+name: Fuzzy CI
+
+on:
+  push:
+    branches: [ check-out-github-action-context ]
+  # pull_request:
+  #   branches: [ fuzzy-ci-artefacts-approach ]
+  #   types: [ opened, synchronize, reopened, unlabeled, labeled ]
+
+env:
+  LABEL_NAME: "fuzzy-diff-looks-good"
+
+jobs:
+  github-context:
+    runs-on: ubuntu-20.04
+    name: Checkout github context
+    steps:
+      - name: Find repo URL
+        run: echo ${{ github.event.repository.html_url }}
