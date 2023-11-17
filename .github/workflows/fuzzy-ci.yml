@@ -205,8 +205,10 @@ jobs:
       run: |
         touch data1.json
         touch data2.json
-        echo "whatever ${{matrix.commit}}, run num: ${{ github.run_number }}" > category_data.json
-        echo "whetever else ${{matrix.commit}}, run num: ${{ github.run_number }}" > full_responses.json
+        # echo "whatever ${{matrix.commit}}, run num: ${{ github.run_number }}" > category_data.json
+        # echo "whetever else ${{matrix.commit}}, run num: ${{ github.run_number }}" > full_responses.json
+        echo "whatever ${{matrix.commit}}" > category_data.json
+        echo "whetever else ${{matrix.commit}}" > full_responses.json
       working-directory: data
 
     - name: Create name for matrix entry data
@@ -221,6 +223,8 @@ jobs:
   diff:
     name: Generate diff
     runs-on: ubuntu-20.04
+    outputs:
+      diff_exits: ${{steps.category_data_diff.outputs.diff_exists}}
     needs: [data, artifact_names]
     env:
       base: ${{ needs.artifact_names.outputs.base_branch_data }}
@@ -262,15 +266,65 @@ jobs:
     name: Evaluate diff
     runs-on: ubuntu-20.04
     needs: [diff, artifact_names]
+    permissions:
+      pull-requests: write
+    env:
+      earlier_diff_was_approved: ${{ contains(github.event.pull_request.labels.*.name, 'fuzzy-diff-looks-good') }}
+      current_diff_exists: ${{ needs.diff.outputs.diff_exits }}
+      cat_data_diff: ${{ needs.artifact_names.outputs.category_data_diff_file }}
     steps:
-      - name: Return
+      - name: Download current diff
+        if: ${{ env.current_diff_exists == 'true' }}
+        uses: actions/download-artifact@v3
+        with:
+          name: ${{ env.cat_data_diff }}
+
+      - name: Get body of approval comment on PR
+        if: ${{ env.earlier_diff_was_approved == 'true' }}
+        id: approval_comment
+        env:
+          msg_start: "This PR introduces a change in some Merlin query response(s), which has been captured by the fuzzy-test CI."
         run: |
-          if "${{ steps.category_data_diff.outputs.diff_exists}}"; then
-            cat $cat_data_diff
-            exit 1
+          body=$(curl -s "https://api.github.com/repos/pitag-ha/merlin/issues/6/comments" | jq --arg msg_start "$msg_start" 'map(select(.body | startswith($msg_start))) | max_by(.'created_by') | .body' | tee -a)
+          echo "body='$body'" | tee -a $GITHUB_OUTPUT
+
+      - name: Retreive hash of approved distilled data diff
+        if: ${{ env.earlier_diff_was_approved == 'true' }}
+        id: approved_diff_info
+        run: |
+          hash=$(echo ${{ steps.approval_comment.outputs.body }} | jq -r | awk '/- Distilled data:/,/^- Full responses:/ {if(!/^- Full responses:/) print}' | grep 'Diff 256-sha' | awk '{print $NF}')
+          echo "hash='$hash'" >> $GITHUB_OUTPUT
+
+      - name: Return
+        env:
+          github_api_labels_url: ${{ github.event.pull_request.base.repo.url }}/issues/${{ github.event.pull_request.number }}/labels
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if $earlier_diff_was_approved; then
+            echo "Earlier diff was approved."
+            current_diff_hash=$(sha256sum $cat_data_diff | awk '{print $1}')
+            if ['$current_diff_hash' == '${{ steps.approved_diff_info.outputs.hash }}']; then
+              echo "This diff has been approved earlier. Everything ok."
+              exit 0
+            else
+              cat $cat_data_diff
+              echo "The diff has changed since it was approved. You can find the new diff printed above or download it from ${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }}. If the new diff looks good, please set the $LABEL_NAME label on the PR again. I'm removing the $LABEL_NAME label for now."
+              status=$(curl -sL -w "%{http_code}" -o output.txt -X DELETE -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/pitag-ha/merlin/issues/6/labels/fuzzy-diff-looks-good)
+              if [ "$status" -ne 200 ]; then
+                echo "Something went wrong trying to remove the $LABEL_NAME label. Please, remove it manually if the diff doesn't look good to you."
+              cat output.txt
+              fi
+              exit 2
+            fi
           else
-            echo "No diff. All good."
-            exit 0
+            if $current_diff_exists; then
+              cat $cat_data_diff
+              echo "Diff can be downloaded from ${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }}. If it looks good, please set the $LABEL_NAME label on the PR."
+              exit 1
+            else
+              echo "No diff. All good."
+              exit 0
+            fi
           fi
 
 
