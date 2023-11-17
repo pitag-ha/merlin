@@ -20,7 +20,12 @@ jobs:
           body=$(curl -s "https://api.github.com/repos/pitag-ha/merlin/issues/6/comments" | jq --arg msg_start "$msg_start" 'map(select(.body | startswith($msg_start))) | max_by(.'created_by') | .body' | tee -a)
           echo "body='$body'" | tee -a $GITHUB_OUTPUT
 
-      - name: Parse body of last approval comment on PR
+      - name: Retreive hash of distilled data diff
         id: approved_diff_hash
         run: |
           echo ${{ steps.approval_comment.outputs.body }} | jq -r | awk '/- Distilled data:/,/^- Full responses:/ {if(!/^- Full responses:/) print}' | grep 'Diff 256-sha' | awk '{print $NF}'
+
+      - name: Retreive hash of full reponses diff
+        id: approved_diff_hash
+        run: |
+          echo ${{ steps.approval_comment.outputs.body }} | jq -r | awk '/- Full responses/,0' | grep 'Diff 256-sha' | awk '{print $NF}'
