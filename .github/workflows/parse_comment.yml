@@ -1,0 +1,21 @@
+name: Fuzzy CI
+
+on:
+  push:
+    branches: [ read-and-parse-comment ]
+  # pull_request:
+  #   branches: [ fuzzy-ci-artefacts-approach ]
+  #   types: [ opened, synchronize, reopened, unlabeled, labeled ]
+
+jobs:
+  all:
+    name: Read and parse comment
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Get body of last approval comment on PR
+        id: approval_comment
+        env:
+          msg_start: "This PR introduces a change in some Merlin query response(s), which has been captured by the fuzzy-test CI."
+        run: |
+          body=$(curl -s "https://api.github.com/repos/pitag-ha/merlin/issues/6/comments" | jq --arg msg_start "$msg_start" 'map(select(.body | startswith($msg_start))) | max_by(.'created_by') | .body' | tee -a)
+          echo "body=$body" | tee -a $GITHUB_OUTPUT
