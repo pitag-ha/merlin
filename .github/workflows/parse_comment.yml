@@ -18,4 +18,9 @@ jobs:
           msg_start: "This PR introduces a change in some Merlin query response(s), which has been captured by the fuzzy-test CI."
         run: |
           body=$(curl -s "https://api.github.com/repos/pitag-ha/merlin/issues/6/comments" | jq --arg msg_start "$msg_start" 'map(select(.body | startswith($msg_start))) | max_by(.'created_by') | .body' | tee -a)
-          echo "body=$body" | tee -a $GITHUB_OUTPUT
+          echo "body='$body'" | tee -a $GITHUB_OUTPUT
+
+      - name: Parse body of last approval comment on PR
+        id: approved_diff_hash
+        run: |
+          echo ${{ steps.approval_comment.outputs.body }} | jq -r | awk '/- Distilled data:/,/^- Full responses:/ {if(!/^- Full responses:/) print}' | grep 'Diff 256-sha' | awk '{print $NF}'
