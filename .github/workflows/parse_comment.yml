@@ -21,11 +21,9 @@ jobs:
           echo "body='$body'" | tee -a $GITHUB_OUTPUT
 
       - name: Retreive hash of distilled data diff
-        id: approved_diff_hash
         run: |
           echo ${{ steps.approval_comment.outputs.body }} | jq -r | awk '/- Distilled data:/,/^- Full responses:/ {if(!/^- Full responses:/) print}' | grep 'Diff 256-sha' | awk '{print $NF}'
 
       - name: Retreive hash of full reponses diff
-        id: approved_diff_hash
         run: |
           echo ${{ steps.approval_comment.outputs.body }} | jq -r | awk '/- Full responses/,0' | grep 'Diff 256-sha' | awk '{print $NF}'
