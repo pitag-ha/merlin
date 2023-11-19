@@ -52,7 +52,7 @@ jobs:
   #       run: ls
 
   artifact_names:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     name: Create persistant artifact names
     outputs:
       base_branch_data: ${{ steps.base_branch.outputs.name}}
@@ -135,6 +135,7 @@ jobs:
           cat_hash: ${{ steps.category_data_diff_hash.outputs.hash }}
 
         run: |
+          TODO: refactor this msg to something like in file message
           msg=$( cat <<EOF
           This PR introduces a change in some Merlin query response(s), which has been captured by the fuzzy-test CI. The fuzzy-test diffs of the CI have been approved in its following state:
           - Distilled data:
@@ -248,8 +249,8 @@ jobs:
 
       - name: Generate category data diff
         id: category_data_diff
-        # To guarantee idempotence in diff generation, we're using `--labels` to avoids time stamps
-        run: (diff -U 1 --label="$base" --label="$merge" data-$base/category_data.json data-$merge/category_data.json > $cat_data_diff && echo "diff_exists=false" | tee -a "$GITHUB_OUTPUT" ) || echo "diff_exists=true" | tee -a "$GITHUB_OUTPUT"
+        # To guarantee idempotence in diff generation, we're using `--labels` to avoids time stamps and sha's
+        run: (diff -U 1 --label="base-branch-data" --label="merge-branch-data" data-$base/category_data.json data-$merge/category_data.json > $cat_data_diff && echo "diff_exists=false" | tee -a "$GITHUB_OUTPUT" ) || echo "diff_exists=true" | tee -a "$GITHUB_OUTPUT"
 
       # - name: Remove timestamps from diff
       #   if: ${{ steps.diff.outputs.diff_exists}}
@@ -285,7 +286,9 @@ jobs:
         env:
           msg_start: "This PR introduces a change in some Merlin query response(s), which has been captured by the fuzzy-test CI."
         run: |
-          body=$(curl -s "https://api.github.com/repos/pitag-ha/merlin/issues/6/comments" | jq --arg msg_start "$msg_start" 'map(select(.body | startswith($msg_start))) | max_by(.'created_by') | .body' | tee -a)
+          # FIXME: Don't hardcode the url
+          # FIXME: This will give a wrong result, if the PR had more than 100 comments before the last diff approval
+          body=$(curl -s "https://api.github.com/repos/pitag-ha/merlin/issues/6/comments?per_page=100" | jq --arg msg_start "$msg_start" 'map(select(.body | startswith($msg_start))) | max_by(.'created_by') | .body' | tee -a)
           echo "body='$body'" | tee -a $GITHUB_OUTPUT
 
       - name: Retreive hash of approved distilled data diff
@@ -303,12 +306,12 @@ jobs:
           if $earlier_diff_was_approved; then
             echo "Earlier diff was approved."
             current_diff_hash=$(sha256sum $cat_data_diff | awk '{print $1}')
-            if ['$current_diff_hash' == '${{ steps.approved_diff_info.outputs.hash }}']; then
+            if [ $current_diff_hash == ${{ steps.approved_diff_info.outputs.hash }} ]; then
               echo "This diff has been approved earlier. Everything ok."
               exit 0
             else
               cat $cat_data_diff
-              echo "The diff has changed since it was approved. You can find the new diff printed above or download it from ${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }}. If the new diff looks good, please set the $LABEL_NAME label on the PR again. I'm removing the $LABEL_NAME label for now."
+              echo "The diff has changed since it was approved. You can find the new diff printed above or download it from ${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }} . If the new diff looks good, please set the $LABEL_NAME label on the PR again. I'm removing the $LABEL_NAME label for now."
               status=$(curl -sL -w "%{http_code}" -o output.txt -X DELETE -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/pitag-ha/merlin/issues/6/labels/fuzzy-diff-looks-good)
               if [ "$status" -ne 200 ]; then
                 echo "Something went wrong trying to remove the $LABEL_NAME label. Please, remove it manually if the diff doesn't look good to you."
@@ -319,7 +322,7 @@ jobs:
           else
             if $current_diff_exists; then
               cat $cat_data_diff
-              echo "Diff can be downloaded from ${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }}. If it looks good, please set the $LABEL_NAME label on the PR."
+              echo "Diff can also be downloaded from ${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }} . If it looks good, please set the $LABEL_NAME label on the PR."
               exit 1
             else
               echo "No diff. All good."
