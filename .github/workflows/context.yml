@@ -17,3 +17,6 @@ jobs:
     steps:
       - name: Find repo URL
         run: echo ${{ github.event.repository.html_url }}
+
+      - name: Find api URL
+        run: echo '${{ toJson(github.event) }}'
