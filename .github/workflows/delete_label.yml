@@ -1,0 +1,24 @@
+name: Fuzzy CI
+
+on:
+  push:
+    branches: [ delete-label ]
+
+env:
+  LABEL_NAME: "fuzzy-diff-looks-good"
+
+jobs:
+  delete_label:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Delete label
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          status=$(curl -sL -w "%{http_code}" -o output.txt -X DELETE -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/pitag-ha/merlin/issues/6/labels/fuzzy-diff-looks-good)
+          if [ "$status" -ne 200 ]; then
+            echo "Something went wrong trying to remove the $LABEL_NAME label. Please, remove it manually if the diff doesn't look good to you."
+          cat output.txt
+          fi
