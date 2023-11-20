@@ -8,16 +8,23 @@ on:
     types: [ opened, synchronize, reopened, unlabeled, labeled ]
 
 env:
-  LABEL_NAME: fuzzy-diff-looks-good
-  full_data: full_responses.json
-  distilled_data: distilled_data.json
-  full_diff: full_responses.diff
-  distilled_diff: distilled_data.diff
+  BASE_BRANCH_ARTIFACT_NAME: data-base-branch-${{ github.event.pull_request.base.sha }}-pr${{ github.event.pull_request.number }}
+  MERGE_BRANCH_ARTIFACT_NAME: data-merge-branch-${{ github.event.pull_request.base.sha }}-${{ github.event.pull_request.head.sha }}-pr${{ github.event.pull_request.number }}
+  DIFF_ARTIFACT_NAME: diff-${{ github.event.pull_request.base.sha }}...merge${{ github.event.pull_request.head.sha }}-pr${{ github.event.pull_request.number }}
+  FULL_DATA_FILE: full_responses.json
+  DISTILLED_DATA_FILE: distilled_data.json
+  FULL_DIFF_FILE: full_responses.diff
+  DISTILLED_DIFF_FILE: distilled_data.diff
+  BASE_BRANCH_SHA: ${{ github.event.pull_request.base.sha }}
+  MERGE_BRANCH_SHA: ${{ github.sha }}
   GH_API_ISSUES: ${{ github.event.issues_url }}
   GH_API_COMMENTS: ${{ github.event.pull_request.comments_url }}
-  # GH_API_LABELS:
+  GH_API_LABELS: ${{ github.event.pull_request.issue_url }}/labels
   GH_API_ARTIFACTS: ${{ github.event.pull_request.base.repo.url }}/actions/artifacts
-  ARTIFACTS_DOWNLOAD: ${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }}
+  TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  ACTIONS_RUNS_ENDPOINT: ${{ github.event.repository.html_url }}/actions/runs
+  CURRENT_ACTION_URL: ${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }}
+  LABEL_NAME: fuzzy-diff-looks-good
 
 jobs:
   # download_curl_api_url:
@@ -60,56 +67,18 @@ jobs:
   #     - name: ls
   #       run: ls
 
-  artifact_names:
-    runs-on: ubuntu-22.04
-    name: Create persistant artifact names
-    outputs:
-      base_branch_dir: ${{ steps.base_branch.outputs.name}}
-      merge_branch_dir: ${{ steps.merge_branch.outputs.name }}
-      diff_dir: ${{ steps.diff.outputs.name }}
-    env:
-      base_branch_sha: ${{ github.event.pull_request.base.sha }}
-      merge_branch_sha: ${{ github.sha }}
-      source_branch_sha: ${{ github.event.pull_request.head.sha }}
-      pr_num: ${{ github.event.pull_request.number }}
-    steps:
-
-      - name: (Debugging) Finding comments api URL
-        run: echo ${{ github.event.pull_request.comments_url }}
-
-      - name: (Debugging) Find issues URL
-        run: echo ${{ github.event.pull_request.issue_url }}
-
-      - name: (Debugging) Find api URL
-        run: echo ${{ toJson(github.event) }}
-
-      - name: Create name for base branch data
-        id: base_branch
-        run: echo "name=base-branch-$base_branch_sha-pr$pr_num" | tee -a "$GITHUB_OUTPUT"
-
-      - name: Create name for merge branch data
-        id: merge_branch
-        run: echo "name=data-merge-branch-$base_branch_sha-$source_branch_sha-pr$pr_num" | tee -a "$GITHUB_OUTPUT"
-
-      - name: Create name for diff
-        id: diff
-        run: echo "name=diff-$base_branch_sha...merge$source_branch_sha-pr$pr_num" | tee -a "$GITHUB_OUTPUT"
-
   approve:
     name: Approve diff
-    needs: artifact_names
     if: github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'fuzzy-diff-looks-good'
     runs-on: ubuntu-22.04
     # FIXME: Which permission is necessary?
     permissions: write-all
-    env:
-      diff: ${{ needs.artifact_names.outputs.diff_dir }}
     steps:
       - name: Retreive diff artifact meta-data
         id: diff_metadata
         run: |
           all_artifacts=$(curl -sSL  "$GH_API_ARTIFACTS")
-          diff_artifact=$(echo "$all_artifacts" | jq "first(.artifacts[] | select(.name == \"$diff\")  )")
+          diff_artifact=$(echo "$all_artifacts" | jq "first(.artifacts[] | select(.name == \"$DIFF_ARTIFACT_NAME\")  )")
           id=$(echo "$diff_artifact" | jq ".id")
           echo "id=$id" | tee -a $GITHUB_OUTPUT
           workflow_run=$(echo "$diff_artifact" | jq ".workflow_run | .id")
@@ -131,10 +100,9 @@ jobs:
       - name: Download diff
         env:
           id: ${{ steps.diff_metadata.outputs.id }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
          # Doing this manually, since actions/download-artifact only works on the same workflow run on which the artifact was uploaded
-         curl -sSLO -H "Authorization: Bearer $GITHUB_TOKEN" "$GH_API_ARTIFACTS/$id/zip" -D headers.txt
+         curl -sSLO -H "Authorization: Bearer $TOKEN" "$GH_API_ARTIFACTS/$id/zip" -D headers.txt
 
       - name: Try to unzip downloaded diff
         run: |
@@ -143,28 +111,25 @@ jobs:
       - name: Compute full responses diff hash
         id: diff_hash
         run: |
-          hash=$(sha256sum "$full_diff" | awk '{print $1}')
+          hash=$(sha256sum "$FULL_DIFF_FILE" | awk '{print $1}')
           echo "hash=$hash" | tee -a $GITHUB_OUTPUT
 
       - name: Write HTTP body to file
         env:
-          repo_url: ${{ github.event.repository.html_url }}
-          cat_workflow_run: ${{ steps.diff_metadata.outputs.workflow_run }}
-          cat_diff_id: ${{ steps.diff_metadata.outputs.id }}
-          cat_hash: ${{ steps.diff_hash.outputs.hash }}
-
+          approved_diffs_workflow_run: ${{ steps.diff_metadata.outputs.workflow_run }}
+          approved_diffs_hash: ${{ steps.diff_hash.outputs.hash }}
         run: |
           # TODO: refactor this msg to something like in file message
           msg=$( cat <<EOF
           This PR introduces a change in some Merlin query response(s), which has been captured by the fuzzy-test CI. The fuzzy-test diffs of the CI have been approved in its following state:
           - Distilled data:
-              - Data can be downloaded from $repo_url/actions/runs/$cat_workflow_run
+              - Data can be downloaded from $ACTIONS_RUNS_ENDPOINT/$approved_diffs_workflow_run
                 - Artifact name with data on target branch (i.e. \`master\` at (...)): (...)
                 - Artifact name with data on PR merge branch, i.e. merge result of source branch (at (...)) and target branch: (...)
                 - Artifact name with diff between the two:
-              - Diff 256-sha: $cat_hash
+              - Diff 256-sha: $approved_diffs_hash
           - Full responses:
-              - Data can be downloaded from $repo_url/actions/runs/$cat_workflow_run
+              - Data can be downloaded from $ACTIONS_RUNS_ENDPOINT/$approved_diffs_workflow_run
                 - Artifact name with data on target branch (i.e. \`master\` at (...)): (...)
                 - Artifact name with data on PR merge branch, i.e. merge result of source branch (at (...)) and target branch: (...)
                 - Artifact name with diff between the two:
@@ -174,26 +139,16 @@ jobs:
           jq -n --arg msg "$msg" '{ body: $msg }' | tee -a body.json
 
       - name: Write comment on PR
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          curl -LsX POST -H "Authorization: Bearer $GITHUB_TOKEN" -d @body.json "$GH_API_COMMENTS"
+          curl -LsX POST -H "Authorization: Bearer $TOKEN" -d @body.json "$GH_API_COMMENTS"
           echo $?
 
   data:
     name: Generate data
-    needs: artifact_names
     runs-on: ubuntu-22.04
-    if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened' || ( github.event.action == 'unlabeled' && github.event.label.name == 'fuzzy-diff-looks-good'  ) )
-    # if: false
-    outputs:
-      base_branch_dir: ${{ env.base_branch_dir }}
-      merge_branch_dir: ${{ env.merge_branch_dir }}
     env:
-      base_branch_sha: ${{ github.event.pull_request.base.sha }}
-      merge_branch_sha: ${{ github.sha }}
-      base_branch_dir: ${{ needs.artifact_names.outputs.base_branch_dir }}
-      merge_branch_dir: ${{ needs.artifact_names.outputs.merge_branch_dir }}
+      data_dir: data
+    if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened' || ( github.event.action == 'unlabeled' && github.event.label.name == 'fuzzy-diff-looks-good'  ) )
     strategy:
       matrix:
         commit: ["merge_branch", "base_branch"]
@@ -204,6 +159,9 @@ jobs:
         fetch-depth: 0
 
     - name: Checking out ${{ matrix.commit }}
+      env:
+        base_branch_sha: ${{ env.BASE_BRANCH_SHA }}
+        merge_branch_sha: ${{ env.MERGE_BRANCH_SHA }}
       run: |
         sha=$${{ matrix.commit }}_sha
         # echo "sha=$sha" >> $GITHUB_ENV
@@ -219,79 +177,79 @@ jobs:
     #     git diff $merge_sha $source
 
     - name: Create artifact dir
-      run: mkdir -p data
+      run: mkdir -p "${{ env.data_dir }}"
 
     - name: Create data
       run: |
-        # echo "whatever ${{matrix.commit}}, run num: ${{ github.run_number }}" > "$distilled_data"
-        # echo "whetever else ${{matrix.commit}}, run num: ${{ github.run_number }}" > "$full_data"
-        echo "whatever ${{matrix.commit}}" > "$distilled_data"
-        echo "whetever else ${{matrix.commit}}" > "$full_data"
-      working-directory: data
+        # echo "whatever ${{matrix.commit}}, run num: ${{ github.run_number }}" > "$DISTILLED_DATA_FILE"
+        # echo "whetever else ${{matrix.commit}}, run num: ${{ github.run_number }}" > "$FULL_DATA_FILE"
+        echo "whatever ${{matrix.commit}}" > "$DISTILLED_DATA_FILE"
+        echo "whetever else ${{matrix.commit}}" > "$FULL_DATA_FILE"
+      working-directory: ${{ env.data_dir }}
 
-    - name: Create name for matrix entry data
-      run: echo "data_dir=$${{ matrix.commit }}_dir" >> $GITHUB_ENV
+    - name: Create name for data artifact
+      id: artifact_name
+      env:
+        base_branch_artifact_name: ${{ env.BASE_BRANCH_ARTIFACT_NAME }}
+        merge_branch_artifact_name: ${{ env. MERGE_BRANCH_ARTIFACT_NAME }}
+      run: echo "name=$${{ matrix.commit }}_artifact_name" >> $GITHUB_OUTPUT
 
     - name: Upload data
       uses: actions/upload-artifact@v3
       with:
-        name: ${{ env.data_dir }}
-        path: data
+        name: ${{ steps.artifact_name.outputs.name }}
+        path: ${{ env.data_dir }}
 
   diff:
     name: Generate diff(s)
     runs-on: ubuntu-22.04
     outputs:
       diff_exits: ${{steps.full_responses_diff.outputs.diff_exists}}
-    needs: [data, artifact_names]
+    needs: data
     env:
-      base: ${{ needs.artifact_names.outputs.base_branch_dir }}
-      merge: ${{ needs.artifact_names.outputs.merge_branch_dir }}
-      diff: ${{ needs.artifact_names.outputs.diff_dir }}
+      base_data_dir: base_data
+      merge_data_dir: merge_data
+      diff_dir: diff
     steps:
       - name: Download base branch data
-        env:
-          data_dir: ${{ env.base }}
         uses: actions/download-artifact@v3
         with:
-          name: ${{ env.data_dir }}
-          path: data-${{ env.data_dir }}
+          name: ${{ env.BASE_BRANCH_ARTIFACT_NAME }}
+          path: ${{ env.base_data_dir }}
 
       - name: Download merge branch data
-        env:
-          data_dir: ${{ env.merge }}
         uses: actions/download-artifact@v3
         with:
-          name: ${{ env.data_dir }}
-          path: data-${{ env.data_dir }}
+          name: ${{ env.MERGE_BRANCH_ARTIFACT_NAME }}
+          path: ${{ env.merge_data_dir }}
 
       - name: Create diff dir
-        run: mkdir -p data
+        run: mkdir -p "$diff_dir"
 
       - name: Generate full responses diff
         id: full_responses_diff
         # TODO: Make this more readable. Also, it could be estracted to avoid the duplication the in next step.
         # To guarantee idempotence in diff generation, we're using `--labels` to avoids time stamps and sha's
-        run: (diff -U 1 --label="base-branch-data" --label="merge-branch-data" "data-$base/$full_data" "data-$merge/$full_data" > "data/$full_diff" && echo "diff_exists=false" | tee -a "$GITHUB_OUTPUT" ) || echo "diff_exists=true" | tee -a "$GITHUB_OUTPUT"
+        run: (diff -U 1 --label="base-branch-data" --label="merge-branch-data" "$base_data_dir/$FULL_DATA_FILE" "$merge_data_dir/$FULL_DATA_FILE" > "$diff_dir/$FULL_DIFF_FILE" && echo "diff_exists=false" | tee -a "$GITHUB_OUTPUT" ) || echo "diff_exists=true" | tee -a "$GITHUB_OUTPUT"
 
 
       - name: Generate category data diff
         if: ${{ steps.full_responses_diff.outputs.diff_exists}}
         id: category_data_diff
         # To guarantee idempotence in diff generation, we're using `--labels` to avoids time stamps and sha's
-        run: (diff -U 1 --label="base-branch-data" --label="merge-branch-data" "data-$base/$distilled_data" "data-$merge/$distilled_data" > "data/$distilled_diff" && echo "diff_exists=false" | tee -a "$GITHUB_OUTPUT" ) || echo "diff_exists=true" | tee -a "$GITHUB_OUTPUT"
+        run: (diff -U 1 --label="base-branch-data" --label="merge-branch-data" "$base_data_dir/$DISTILLED_DATA_FILE" "$merge_data_dir/$DISTILLED_DATA_FILE" > "$diff_dir/$DISTILLED_DIFF_FILE" && echo "diff_exists=false" | tee -a "$GITHUB_OUTPUT" ) || echo "diff_exists=true" | tee -a "$GITHUB_OUTPUT"
 
       - name: Upload diff(s)
         if: ${{ steps.full_responses_diff.outputs.diff_exists}}
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ env.diff }}
-          path: data/
+          name: ${{ env.DIFF_ARTIFACT_NAME }}
+          path: ${{ env.diff_dir }}
 
   output:
     name: Evaluate diff
     runs-on: ubuntu-22.04
-    needs: [diff, artifact_names]
+    needs: diff
     permissions:
       pull-requests: write
     env:
@@ -303,7 +261,10 @@ jobs:
         if: ${{ env.current_diff_exists == 'true' }}
         uses: actions/download-artifact@v3
         with:
-          name: ${{ env.diff_dir }}
+          name: ${{ env.DIFF_ARTIFACT_NAME }}
+
+      - name: Ls
+        run: ls
 
       - name: Get body of approval comment on PR
         if: ${{ env.earlier_diff_was_approved == 'true' }}
@@ -325,23 +286,22 @@ jobs:
       - name: Return
         env:
           github_api_labels_url: ${{ github.event.pull_request.base.repo.url }}/issues/${{ github.event.pull_request.number }}/labels
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if $earlier_diff_was_approved; then
             echo "Earlier diff was approved."
-            current_diff_hash=$(sha256sum $full_diff | awk '{print $1}')
+            current_diff_hash=$(sha256sum "$FULL_DIFF_FILE" | awk '{print $1}')
             if [ "$current_diff_hash" == ${{ steps.approved_diff_info.outputs.hash }} ]; then
               echo "This diff has been approved earlier. Everything ok."
               exit 0
             else
               echo "--------beginning of full reponses diff--------"
-              cat "$full_diff"
+              cat "$FULL_DIFF_FILE"
               echo "--------end of full reponses diff--------"
               echo "--------beginning of distilled data diff--------"
-              cat "$distilled_diff"
+              cat "$DISTILLED_DIFF_FILE"
               echo "--------end of distilled data diff--------"
-              echo "The diff has changed since it was approved. You can find the new diff(s) printed above or download them from ${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }} . If the new diff looks good, please set the $LABEL_NAME label on the PR again. I'm removing the $LABEL_NAME label for now."
-              status=$(curl -sL -w "%{http_code}" -o output.txt -X DELETE -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/pitag-ha/merlin/issues/6/labels/fuzzy-diff-looks-good)
+              printf "The diff has changed since it was approved. You can find the new diff(s) printed above or download them from $CURRENT_ACTION_URL .\nIf the new diff looks good, please set the $LABEL_NAME label on the PR again. I'm removing the $LABEL_NAME label for now."
+              status=$(curl -sL -w "%{http_code}" -o output.txt -X DELETE -H "Authorization: Bearer $TOKEN" "$GH_API_LABELS/$LABEL_NAME")
               if [ "$status" -ne 200 ]; then
                 echo "Something went wrong trying to remove the $LABEL_NAME label. Please, remove it manually if the diff doesn't look good to you."
               cat output.txt
@@ -351,12 +311,12 @@ jobs:
           else
             if $current_diff_exists; then
               echo "--------beginning of full reponses diff--------"
-              cat "$full_diff"
+              cat "$FULL_DIFF_FILE"
               echo "--------end of full reponses diff--------"
               echo "--------beginning of distilled data diff--------"
-              cat "$distilled_diff"
+              cat "$DISTILLED_DIFF_FILE"
               echo "--------end of distilled data diff--------"
-              echo "Diff can also be downloaded from ${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }} . If it looks good, please set the $LABEL_NAME label on the PR."
+              printf "Diff can also be downloaded from $CURRENT_ACTION_URL .\nIf it looks good, please set the $LABEL_NAME label on the PR."
               exit 1
             else
               echo "No diff. All good."
