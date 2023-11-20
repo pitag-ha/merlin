@@ -13,7 +13,10 @@ env:
   distilled_data: distilled_data.json
   full_diff: full_responses.diff
   distilled_diff: distilled_data.diff
-  GITHUB_API_ISSUES: ${{ github.event.issues_url }}
+  GH_API_ISSUES: ${{ github.event.issues_url }}
+  GH_API_COMMENTS: ${{ github.event.pull_request.comments_url }}
+  # GH_API_LABELS:
+  GH_API_ARTIFACTS: ${{ github.event.pull_request.base.repo.url }}/actions/artifacts
   ARTIFACTS_DOWNLOAD: ${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }}
 
 jobs:
@@ -70,6 +73,16 @@ jobs:
       source_branch_sha: ${{ github.event.pull_request.head.sha }}
       pr_num: ${{ github.event.pull_request.number }}
     steps:
+
+      - name: (Debugging) Finding comments api URL
+        run: echo ${{ github.event.pull_request.comments_url }}
+
+      - name: (Debugging) Find issues URL
+        run: echo ${{ github.event.pull_request.issue_url }}
+
+      - name: (Debugging) Find api URL
+        run: echo ${{ toJson(github.event) }}
+
       - name: Create name for base branch data
         id: base_branch
         run: echo "name=base-branch-$base_branch_sha-pr$pr_num" | tee -a "$GITHUB_OUTPUT"
@@ -87,16 +100,15 @@ jobs:
     needs: artifact_names
     if: github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'fuzzy-diff-looks-good'
     runs-on: ubuntu-22.04
-    # FIXME: Which permission is necessary? 
+    # FIXME: Which permission is necessary?
     permissions: write-all
     env:
-      gh_api_artifacts_url: ${{ github.event.pull_request.base.repo.url }}/actions/artifacts
       diff: ${{ needs.artifact_names.outputs.diff_dir }}
     steps:
       - name: Retreive diff artifact meta-data
         id: diff_metadata
         run: |
-          all_artifacts=$(curl -sSL  $gh_api_artifacts_url)
+          all_artifacts=$(curl -sSL  "$GH_API_ARTIFACTS")
           diff_artifact=$(echo "$all_artifacts" | jq "first(.artifacts[] | select(.name == \"$diff\")  )")
           id=$(echo "$diff_artifact" | jq ".id")
           echo "id=$id" | tee -a $GITHUB_OUTPUT
@@ -122,7 +134,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
          # Doing this manually, since actions/download-artifact only works on the same workflow run on which the artifact was uploaded
-         curl -sSLO -H "Authorization: Bearer $GITHUB_TOKEN" "$gh_api_artifacts_url/$id/zip" -D headers.txt
+         curl -sSLO -H "Authorization: Bearer $GITHUB_TOKEN" "$GH_API_ARTIFACTS/$id/zip" -D headers.txt
 
       - name: Try to unzip downloaded diff
         run: |
@@ -165,7 +177,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          curl -LsX POST -H "Authorization: Bearer $GITHUB_TOKEN" -d @body.json https://api.github.com/repos/pitag-ha/merlin/issues/6/comments
+          curl -LsX POST -H "Authorization: Bearer $GITHUB_TOKEN" -d @body.json "$GH_API_COMMENTS"
           echo $?
 
   data:
@@ -298,11 +310,9 @@ jobs:
         id: approval_comment
         env:
           msg_start: "This PR introduces a change in some Merlin query response(s), which has been captured by the fuzzy-test CI."
-          github_api_comments_url: ${{ github.event.pull_request.base.repo.url }}/issues/6/comments
         run: |
-          # FIXME: Don't hardcode the url
           # FIXME: This will give a wrong result, if the PR had more than 100 comments before the last diff approval
-          body=$(curl -s "https://api.github.com/repos/pitag-ha/merlin/issues/6/comments?per_page=100" | jq --arg msg_start "$msg_start" 'map(select(.body | startswith($msg_start))) | max_by(.'created_by') | .body' | tee -a)
+          body=$(curl -s "$GH_API_COMMENTS?per_page=100" | jq --arg msg_start "$msg_start" 'map(select(.body | startswith($msg_start))) | max_by(.'created_by') | .body' | tee -a)
           echo "body='$body'" | tee -a $GITHUB_OUTPUT
 
       - name: Retreive hash of approved diff
