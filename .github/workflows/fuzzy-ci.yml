@@ -8,7 +8,7 @@ on:
     types: [ opened, synchronize, reopened, unlabeled, labeled ]
 
 env:
-  LABEL_NAME: "fuzzy-diff-looks-good"
+  LABEL_NAME: fuzzy-diff-looks-good
   full_data: full_responses.json
   distilled_data: distilled_data.json
   full_diff: full_responses.diff
@@ -86,8 +86,8 @@ jobs:
     name: Approve diff
     needs: artifact_names
     if: github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'fuzzy-diff-looks-good'
-    runs-on: ubuntu-20.04
-    # FIXME
+    runs-on: ubuntu-22.04
+    # FIXME: Which permission is necessary? 
     permissions: write-all
     env:
       gh_api_artifacts_url: ${{ github.event.pull_request.base.repo.url }}/actions/artifacts
@@ -100,7 +100,7 @@ jobs:
           diff_artifact=$(echo "$all_artifacts" | jq "first(.artifacts[] | select(.name == \"$diff\")  )")
           id=$(echo "$diff_artifact" | jq ".id")
           echo "id=$id" | tee -a $GITHUB_OUTPUT
-          workflow_run=$(echo $diff_artifact | jq ".workflow_run | .id")
+          workflow_run=$(echo "$diff_artifact" | jq ".workflow_run | .id")
           echo "workflow_run=$workflow_run" | tee -a $GITHUB_OUTPUT
 
       - name: Check if diff exists
@@ -109,7 +109,7 @@ jobs:
         run: |
           # FIXME (?)
           if [ -z $id ]; then
-            echo "You seem to have tried to approve a diff that doesn't exist yet.\nWait for the diff to have been generated and then try again."
+            printf "You seem to have tried to approve a diff that doesn't exist yet.\nWait for the diff to have been generated and then try again."
             # TODO: Remove the label
             exit 1
           else
@@ -122,7 +122,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
          # Doing this manually, since actions/download-artifact only works on the same workflow run on which the artifact was uploaded
-         curl -sSLO -H "Authorization: Bearer $GITHUB_TOKEN" $gh_api_artifacts_url/$id/zip -D headers.txt
+         curl -sSLO -H "Authorization: Bearer $GITHUB_TOKEN" "$gh_api_artifacts_url/$id/zip" -D headers.txt
 
       - name: Try to unzip downloaded diff
         run: |
@@ -131,7 +131,7 @@ jobs:
       - name: Compute full responses diff hash
         id: diff_hash
         run: |
-          hash=$(sha256sum $full_diff | awk '{print $1}')
+          hash=$(sha256sum "$full_diff" | awk '{print $1}')
           echo "hash=$hash" | tee -a $GITHUB_OUTPUT
 
       - name: Write HTTP body to file
@@ -171,7 +171,7 @@ jobs:
   data:
     name: Generate data
     needs: artifact_names
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened' || ( github.event.action == 'unlabeled' && github.event.label.name == 'fuzzy-diff-looks-good'  ) )
     # if: false
     outputs:
@@ -211,10 +211,10 @@ jobs:
 
     - name: Create data
       run: |
-        # echo "whatever ${{matrix.commit}}, run num: ${{ github.run_number }}" > category_data.json
-        # echo "whetever else ${{matrix.commit}}, run num: ${{ github.run_number }}" > $full_data
-        echo "whatever ${{matrix.commit}}" > category_data.json
-        echo "whetever else ${{matrix.commit}}" > $full_data
+        # echo "whatever ${{matrix.commit}}, run num: ${{ github.run_number }}" > "$distilled_data"
+        # echo "whetever else ${{matrix.commit}}, run num: ${{ github.run_number }}" > "$full_data"
+        echo "whatever ${{matrix.commit}}" > "$distilled_data"
+        echo "whetever else ${{matrix.commit}}" > "$full_data"
       working-directory: data
 
     - name: Create name for matrix entry data
@@ -228,7 +228,7 @@ jobs:
 
   diff:
     name: Generate diff(s)
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     outputs:
       diff_exits: ${{steps.full_responses_diff.outputs.diff_exists}}
     needs: [data, artifact_names]
@@ -258,15 +258,16 @@ jobs:
 
       - name: Generate full responses diff
         id: full_responses_diff
+        # TODO: Make this more readable. Also, it could be estracted to avoid the duplication the in next step.
         # To guarantee idempotence in diff generation, we're using `--labels` to avoids time stamps and sha's
-        run: (diff -U 1 --label="base-branch-data" --label="merge-branch-data" data-$base/$full_data data-$merge/$full_data > data/$full_diff && echo "diff_exists=false" | tee -a "$GITHUB_OUTPUT" ) || echo "diff_exists=true" | tee -a "$GITHUB_OUTPUT"
+        run: (diff -U 1 --label="base-branch-data" --label="merge-branch-data" "data-$base/$full_data" "data-$merge/$full_data" > "data/$full_diff" && echo "diff_exists=false" | tee -a "$GITHUB_OUTPUT" ) || echo "diff_exists=true" | tee -a "$GITHUB_OUTPUT"
 
 
       - name: Generate category data diff
         if: ${{ steps.full_responses_diff.outputs.diff_exists}}
         id: category_data_diff
         # To guarantee idempotence in diff generation, we're using `--labels` to avoids time stamps and sha's
-        run: (diff -U 1 --label="base-branch-data" --label="merge-branch-data" data-$base/category_data.json data-$merge/category_data.json > data/$distilled_diff && echo "diff_exists=false" | tee -a "$GITHUB_OUTPUT" ) || echo "diff_exists=true" | tee -a "$GITHUB_OUTPUT"
+        run: (diff -U 1 --label="base-branch-data" --label="merge-branch-data" "data-$base/$distilled_data" "data-$merge/$distilled_data" > "data/$distilled_diff" && echo "diff_exists=false" | tee -a "$GITHUB_OUTPUT" ) || echo "diff_exists=true" | tee -a "$GITHUB_OUTPUT"
 
       - name: Upload diff(s)
         if: ${{ steps.full_responses_diff.outputs.diff_exists}}
@@ -277,7 +278,7 @@ jobs:
 
   output:
     name: Evaluate diff
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     needs: [diff, artifact_names]
     permissions:
       pull-requests: write
@@ -319,15 +320,15 @@ jobs:
           if $earlier_diff_was_approved; then
             echo "Earlier diff was approved."
             current_diff_hash=$(sha256sum $full_diff | awk '{print $1}')
-            if [ $current_diff_hash == ${{ steps.approved_diff_info.outputs.hash }} ]; then
+            if [ "$current_diff_hash" == ${{ steps.approved_diff_info.outputs.hash }} ]; then
               echo "This diff has been approved earlier. Everything ok."
               exit 0
             else
               echo "--------beginning of full reponses diff--------"
-              cat $full_diff
+              cat "$full_diff"
               echo "--------end of full reponses diff--------"
               echo "--------beginning of distilled data diff--------"
-              cat $distilled_diff
+              cat "$distilled_diff"
               echo "--------end of distilled data diff--------"
               echo "The diff has changed since it was approved. You can find the new diff(s) printed above or download them from ${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }} . If the new diff looks good, please set the $LABEL_NAME label on the PR again. I'm removing the $LABEL_NAME label for now."
               status=$(curl -sL -w "%{http_code}" -o output.txt -X DELETE -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/pitag-ha/merlin/issues/6/labels/fuzzy-diff-looks-good)
@@ -340,10 +341,10 @@ jobs:
           else
             if $current_diff_exists; then
               echo "--------beginning of full reponses diff--------"
-              cat $full_diff
+              cat "$full_diff"
               echo "--------end of full reponses diff--------"
               echo "--------beginning of distilled data diff--------"
-              cat $distilled_diff
+              cat "$distilled_diff"
               echo "--------end of distilled data diff--------"
               echo "Diff can also be downloaded from ${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }} . If it looks good, please set the $LABEL_NAME label on the PR."
               exit 1
