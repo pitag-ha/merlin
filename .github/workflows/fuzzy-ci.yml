@@ -4,7 +4,7 @@ on:
   # push:
   #   branches: [ fuzzy-ci-artefacts-approach ]
   pull_request:
-    branches: [ fuzzy-ci-artefacts-approach ]
+    branches: [ master ]
     types: [ opened, synchronize, reopened, unlabeled, labeled ]
 
 env:
@@ -29,7 +29,7 @@ env:
   ACTIONS_RUNS_ENDPOINT: ${{ github.event.repository.html_url }}/actions/runs
   CURRENT_ACTION_URL: ${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }}
   LABEL_NAME: fuzzy-diff-looks-good
-  MERL_AN_SHA: a8b3eda2768f02dc5a4312d8efd31978ba16ed13
+  MERL_AN_SHA: 1643fb7a9958379fb4ed8d7c5169146aaa88f5b7
 
 jobs:
   # download_curl_api_url:
@@ -197,9 +197,6 @@ jobs:
         # Adapt this on other branches and bump this when master bumps the compiler version
         ocaml-compiler: ocaml-base-compiler.4.14.1
         dune-cache: true
-
-    - name: Does opam-monorepo get installed?
-      run: opam-monorepo --help
 
     # - name: Clone Irmin to have a code base to test merlin on
     #   run: |
