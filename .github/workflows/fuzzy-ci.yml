@@ -126,16 +126,14 @@ jobs:
           msg=$( cat <<EOF
           This PR introduces a change in some Merlin query response(s), that's captured by the fuzzy-test CI. The diff of the CI has been approved in its following state:
           - 256-sha of full reponses diff hash: $approved_diffs_hash
-          - The diff can be found in the artifact \`$DIFF_ARTIFACT_NAME\` on $ACTIONS_RUNS_ENDPOINT/$approved_diffs_workflow_run . It contains the difference in the responses of \`ocamlmerlin\` when run on randomly chosen samples
-            - with merlin checked out to the PR target, i.e. \`$BASE_BRANCH_REF\` at \`$BASE_BRANCH_SHA\`
-            - with merlin checked out to the PR merge branch, i.e. merge result of \`$SOURCE_BRANCH_REF\` at \`$SOURCE_BRANCH_SHA\` and the target
+          - The diff can be found in the artifact \`$DIFF_ARTIFACT_NAME\` on $ACTIONS_RUNS_ENDPOINT/$approved_diffs_workflow_run . It contains the difference in the responses of \`ocamlmerlin\` when run on randomly chosen samples with Merlin checked out to 1. the PR's base branch and 2. the PRs merge branch.
 
           Note: The `ocamlmerlin` responses on the samples have also been distilled down to
             - What kind of response does Merlin give (return or failure or error etc.)?
             - Has the Merlin server crashed since the last query?
           EOF
           )
-          if [ -s "$DISTILLED_DATA_FILE" ]; then
+          if [ -s "$DISTILLED_DIFF_FILE" ]; then
               msg+=$( cat <<EOF
 
 
@@ -202,8 +200,18 @@ jobs:
     #     # Warning: There's now a git-substructure, so git needs caution from now on
     #     git clone https://github.com/mirage/irmin.git
 
-    # - name: 
-    #   run: 
+
+    # - name: Install Irmin deps
+    #   run: |
+        # FIXME: Make this reproducible
+          # git checkout 649657d2bca5a74d841c59a394cf2711a5139448
+          # opam install . --deps-only
+    #   working-directory: irmin
+
+    # - name: Build Irmin
+    #   run: |
+    #   opam exec -- dune build @check
+    #   working-directory: irmin
 
     - name: Install merlin dependencies
       run: |
