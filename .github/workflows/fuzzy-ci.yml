@@ -29,6 +29,7 @@ env:
   ACTIONS_RUNS_ENDPOINT: ${{ github.event.repository.html_url }}/actions/runs
   CURRENT_ACTION_URL: ${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }}
   LABEL_NAME: fuzzy-diff-looks-good
+  MERL_AN_SHA: a8b3eda2768f02dc5a4312d8efd31978ba16ed13
 
 jobs:
   # download_curl_api_url:
@@ -197,6 +198,17 @@ jobs:
         ocaml-compiler: ocaml-base-compiler.4.14.1
         dune-cache: true
 
+    - name: Does opam-monorepo get installed?
+      run: opam-monorepo --help
+
+    # - name: Clone Irmin to have a code base to test merlin on
+    #   run: |
+    #     # Warning: There's now a git-substructure, so git needs caution from now on
+    #     git clone https://github.com/mirage/irmin.git
+
+    # - name: 
+    #   run: 
+
     - name: Install merlin dependencies
       run: |
         opam pin menhirLib 20201216 --no-action
@@ -210,7 +222,8 @@ jobs:
         opam exec -- dune install
 
     - name: Install merl-an
-      run: opam pin -y merl-an https://github.com/pitag-ha/merl-an.git
+      run: opam pin -y merl-an https://github.com/pitag-ha/merl-an.git#$MERL_AN_SHA
+      # TODO: Cache the merli-an binary with key: os${{ runner.os }}+arch${{ runner.arch }}+merl-an-sha$MERL_AN_SHA
 
     # - name: Create data dir
     #   run: mkdir -p "${{ env.data_dir }}"
@@ -231,14 +244,6 @@ jobs:
         # merl-an behavior --queries=type-enclosing,occurrences,locate,complete-prefix,errors --sample-size=30 --data=irmin_pack_data --merlin=ocamlmerlin --project=irmin/src/irmin-pack --extensions=ml
         # merl-an behavior --queries=type-enclosing,occurrences,locate,complete-prefix,errors --sample-size=30 --data=irmin_pack_test_data --merlin=ocamlmerlin --project=irmin/test/irmin-pack --extensions=ml
       # working-directory: ${{ env.data_dir }}
-
-    - name: Create data
-      run: |
-        # echo "whatever ${{matrix.commit}}, run num: ${{ github.run_number }}" > "$DISTILLED_DATA_FILE"
-        # echo "whetever else ${{matrix.commit}}, run num: ${{ github.run_number }}" > "$FULL_DATA_FILE"
-        echo "whatever ${{matrix.commit}}" > "$DISTILLED_DATA_FILE"
-        echo "whetever else ${{matrix.commit}}" > "$FULL_DATA_FILE"
-      working-directory: ${{ env.data_dir }}
 
     - name: Create name for data artifact
       id: artifact_name
