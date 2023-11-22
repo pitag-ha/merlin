@@ -84,7 +84,8 @@ jobs:
     if: github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'fuzzy-diff-looks-good'
     runs-on: ubuntu-22.04
     # FIXME: Which permission is necessary?
-    permissions: write-all
+    permissions:
+      pull-requests: write
     steps:
       - name: Retreive diff artifact meta-data
         id: diff_metadata
