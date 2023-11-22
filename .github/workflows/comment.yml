@@ -9,7 +9,7 @@ jobs:
     name: Write a comment
     runs-on: ubuntu-20.04
     permissions:
-      issues: write
+      # issues: write
       pull-requests: write
     steps:
       - name: Write HTTP body to file
