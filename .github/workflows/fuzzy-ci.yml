@@ -202,18 +202,19 @@ jobs:
         ocaml-compiler: ocaml-base-compiler.4.14.1
         dune-cache: true
 
-    # - name: Clone Irmin to have a code base to test merlin on
-    #   run: |
-    #     # Warning: There's now a git-substructure, so git needs caution from now on
-    #     git clone https://github.com/mirage/irmin.git
+    - name: Download Irmin tarball
+      run: |
+        wget https://github.com/mirage/irmin/releases/download/3.9.0/irmin-3.9.0.tbz
 
+    - name: Decompress Irmin tarball
+      run: tar xvf irmin-3.9.0.tbz irmin-3.9.0/
 
     # - name: Install Irmin deps
     #   run: |
         # FIXME: Make this reproducible
           # git checkout 649657d2bca5a74d841c59a394cf2711a5139448
           # opam install . --deps-only
-    #   working-directory: irmin
+    #   working-directory: irmin-3.9.0
 
     # - name: Build Irmin
     #   run: |
