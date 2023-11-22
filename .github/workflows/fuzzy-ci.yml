@@ -9,8 +9,8 @@ on:
 
 env:
   # Artifact names need to be consistant across jobs:
-  BASE_BRANCH_ARTIFACT_NAME: data-base-branch-${{ github.event.pull_request.base.sha }}-pr${{ github.event.pull_request.number }}
-  MERGE_BRANCH_ARTIFACT_NAME: data-merge-branch-${{ github.event.pull_request.base.sha }}-${{ github.event.pull_request.head.sha }}-pr${{ github.event.pull_request.number }}
+  BASE_BRANCH_ARTIFACT_NAME: base-branch-data-${{ github.event.pull_request.base.sha }}-pr${{ github.event.pull_request.number }}
+  MERGE_BRANCH_ARTIFACT_NAME: merge-branch-data-${{ github.event.pull_request.base.sha }}-${{ github.event.pull_request.head.sha }}-pr${{ github.event.pull_request.number }}
   DIFF_ARTIFACT_NAME: diff-${{ github.event.pull_request.base.sha }}-${{ github.event.pull_request.head.sha }}
 
   # File names also need to be consistant across jobs:
@@ -33,7 +33,8 @@ env:
   ACTIONS_RUNS_ENDPOINT: ${{ github.event.repository.html_url }}/actions/runs
   CURRENT_ACTION_URL: ${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }}
 
-  # Always use the same `merl-an` and Irmin commit
+  # Fix the `merl-an` version as well as the Irmin version (Irmin is used as the test code base to test `ocamlmerlin` on)
+  IRMIN_VERSION: 3.9.0
   # TODO: Release merl-an and install a certain version instead of pinning it to a certain commit
   MERL_AN_SHA: 1643fb7a9958379fb4ed8d7c5169146aaa88f5b7
 
@@ -202,25 +203,6 @@ jobs:
         ocaml-compiler: ocaml-base-compiler.4.14.1
         dune-cache: true
 
-    - name: Download Irmin tarball
-      run: |
-        wget https://github.com/mirage/irmin/releases/download/3.9.0/irmin-3.9.0.tbz
-
-    - name: Decompress Irmin tarball
-      run: tar xvf irmin-3.9.0.tbz irmin-3.9.0/
-
-    # - name: Install Irmin deps
-    #   run: |
-        # FIXME: Make this reproducible
-          # git checkout 649657d2bca5a74d841c59a394cf2711a5139448
-          # opam install . --deps-only
-    #   working-directory: irmin-3.9.0
-
-    # - name: Build Irmin
-    #   run: |
-    #   opam exec -- dune build @check
-    #   working-directory: irmin
-
     - name: Install merlin dependencies
       run: |
         opam pin menhirLib 20201216 --no-action
@@ -231,30 +213,44 @@ jobs:
         # Running `subst` to have the current commit in the data produced by `merl-an`
         opam exec -- dune subst
         opam exec -- dune build -p merlin-lib,dot-merlin-reader,merlin
-        opam exec -- dune install
+        opam exec -- dune install -p merlin-lib,dot-merlin-reader,merlin
+
+    - name: Download Irmin tarball
+      run: |
+        wget https://github.com/mirage/irmin/releases/download/$IRMIN_VERSION/irmin-$IRMIN_VERSION.tbz
+
+    - name: Create irmin dir
+      run: mkdir -p irmin
+
+    - name: Decompress Irmin tarball
+      run: tar xvf irmin-$IRMIN_VERSION.tbz -C irmin --strip-components=1
+
+    - name: Get Irmin's lock file
+      run: |
+        # Checking out the merge branch to get the updated lock file in case of lock file update
+        git checkout ${{ github.sha }}
+        cp fuzzy-ci-fixtures/irmin-$IRMIN_VERSION.opam-locked irmin/irmin.opam.locked
+
+    - name: Install the Irmin depnedencies
+      run: |
+        opam install irmin irmin-pack --locked -y
+      working-directory: irmin
+
+    - name: Build Irmin
+      run: |
+        opam exec -- dune build -p irmin,irmin-pack,ppx_irmin
+      working-directory: irmin
 
     - name: Install merl-an
       run: opam pin -y merl-an https://github.com/pitag-ha/merl-an.git#$MERL_AN_SHA
       # TODO: Cache the merli-an binary with key: os${{ runner.os }}+arch${{ runner.arch }}+merl-an-sha$MERL_AN_SHA
 
-    # - name: Create data dir
-    #   run: mkdir -p "${{ env.data_dir }}"
-
-    - name: Check out stuff
-      run: ls
-
-    - name: Check out more stuff
-      run: opam exec -- merl-an --help
-
     - name: Create new data
       run: |
-        opam exec -- merl-an behavior --queries=errors --sample-size=2 --data="${{ env.data_dir }}" --merlin=ocamlmerlin --project=src/
-        # opam exec -- merl-an behavior --queries=type-enclosing,occurrences,locate,complete-prefix,errors --sample-size=30 --data="${{ env.data_dir }}" --merlin=ocamlmerlin --project=src/
-        # TODO: Use Irmin as a test code base rather the Merlin itself
-        eval $(opam env)
-        # merl-an behavior --queries=type-enclosing,occurrences,locate,complete-prefix,errors --sample-size=30 --data=irmin_data --merlin=ocamlmerlin --project=test-code-base/irmin/src/irmin/
-        # merl-an behavior --queries=type-enclosing,occurrences,locate,complete-prefix,errors --sample-size=30 --data=irmin_pack_data --merlin=ocamlmerlin --project=irmin/src/irmin-pack --extensions=ml
-        # merl-an behavior --queries=type-enclosing,occurrences,locate,complete-prefix,errors --sample-size=30 --data=irmin_pack_test_data --merlin=ocamlmerlin --project=irmin/test/irmin-pack --extensions=ml
+        opam exec -- merl-an behavior --queries=type-enclosing,occurrences,locate,complete-prefix,errors --sample-size=30 --data=${{ env.data_dir }} --merlin=ocamlmerlin --project=irmin/src/irmin/
+        # TODO: Modify `merl-an` so that it's possible to pass in a list of projects, i.e. irmin/src/irmin/, irmin/src/irmin-pack and irmin/test/irmin-pack
+        # opam exec -- merl-an behavior --queries=type-enclosing,occurrences,locate,complete-prefix,errors --sample-size=30 --data=irmin_pack_data --merlin=ocamlmerlin --project=irmin/src/irmin-pack --extensions=ml
+        # opam exec -- merl-an behavior --queries=type-enclosing,occurrences,locate,complete-prefix,errors --sample-size=30 --data=irmin_pack_test_data --merlin=ocamlmerlin --project=irmin/test/irmin-pack --extensions=ml
       # working-directory: ${{ env.data_dir }}
 
     - name: Create name for data artifact
