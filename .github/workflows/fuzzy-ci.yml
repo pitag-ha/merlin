@@ -296,7 +296,7 @@ jobs:
         id: full_responses_diff
         # TODO: Make this more readable. Also, it could be estracted to avoid the duplication the in next step.
         # To guarantee idempotence in diff generation, we're using `--labels` to avoids time stamps and sha's
-        run: (diff -U 1 --label="base-branch-data" --label="merge-branch-data" "$base_data_dir/$FULL_DATA_FILE" "$merge_data_dir/$FULL_DATA_FILE" > "$diff_dir/$FULL_DIFF_FILE" && echo "diff_exists=false" | tee -a "$GITHUB_OUTPUT" ) || echo "diff_exists=true" | tee -a "$GITHUB_OUTPUT"
+        run: (diff -U 1 --label="base-branch-data" --label="merge-branch-data" <(jq '.' "$base_data_dir/$FULL_DATA_FILE") <(jq '.' "$merge_data_dir/$FULL_DATA_FILE") > "$diff_dir/$FULL_DIFF_FILE" && echo "diff_exists=false" | tee -a "$GITHUB_OUTPUT" ) || echo "diff_exists=true" | tee -a "$GITHUB_OUTPUT"
 
 
       - name: Generate category data diff
