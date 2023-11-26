@@ -295,19 +295,32 @@ jobs:
 
       - name: Generate full responses diff
         id: full_responses_diff
-        # TODO: Make this more readable. Also, it could be estracted to avoid the duplication the in next step.
-        # To guarantee idempotence in diff generation, we're using `--labels` to avoids time stamps and sha's
-        run: (diff -U 1 --label="base-branch-data" --label="merge-branch-data" <(jq '.' "$base_data_dir/$FULL_DATA_FILE") <(jq '.' "$merge_data_dir/$FULL_DATA_FILE") > "$diff_dir/$FULL_DIFF_FILE" && echo "diff_exists=false" | tee -a "$GITHUB_OUTPUT" ) || echo "diff_exists=true" | tee -a "$GITHUB_OUTPUT"
+        run: |
+          while IFS=$'\t' read -r item1 item2; do
+            label1="base-branch-data $(echo "$item1" | jq -r '.cmd') (id=$(echo "$item1" | jq -r '.sample_id'))"
+            label2="base-branch-data $(echo "$item2" | jq -r '.cmd') (id=$(echo "$item2" | jq -r '.sample_id'))"
+            # To guarantee idempotence in diff generation, we're using `--labels` to avoids time stamps and sha's
+            diff -U 10 --label="$label1" --label="$label2" <(echo "$item1" | jq) <(echo "$item2" | jq) >> "$diff_dir/$FULL_DIFF_FILE"
+          done < <(paste "$base_data_dir/$FULL_DATA_FILE" "$merge_data_dir/$FULL_DATA_FILE")
+          if [ -s "$diff_dir/$DISTILLED_DIFF_FILE" ]; then
+            echo "diff_exists=true" | tee -a $GITHUB_OUTPUT
+          else
+            echo "diff_exists=false" | tee -a $GITHUB_OUTPUT
+          fi
 
 
-      - name: Generate category data diff
-        if: ${{ steps.full_responses_diff.outputs.diff_exists}}
-        id: category_data_diff
-        # To guarantee idempotence in diff generation, we're using `--labels` to avoids time stamps and sha's
-        run: (diff -U 1 --label="base-branch-data" --label="merge-branch-data" "$base_data_dir/$DISTILLED_DATA_FILE" "$merge_data_dir/$DISTILLED_DATA_FILE" > "$diff_dir/$DISTILLED_DIFF_FILE" && echo "diff_exists=false" | tee -a "$GITHUB_OUTPUT" ) || echo "diff_exists=true" | tee -a "$GITHUB_OUTPUT"
+      - name: Generate distilled data diff
+        # If there's no full reponses diff, there also won't be a distilled data diff
+        if: ${{ steps.full_responses_diff.outputs.diff_exists == 'true' }}
+        run: |
+          while IFS=$'\t' read -r item1 item2; do
+            label1="base-branch-data $(echo "$item1" | jq -r '.cmd') (id=$(echo "$item1" | jq -r '.sample_id'))"
+            label2="base-branch-data $(echo "$item2" | jq -r '.cmd') (id=$(echo "$item2" | jq -r '.sample_id'))"
+            # To guarantee idempotence in diff generation, we're using `--labels` to avoids time stamps and sha's
+            diff -U 10 --label="$label1" --label="$label2" <(echo "$item1" | jq) <(echo "$item2" | jq) >> "$diff_dir/$DISTILLED_DIFF_FILE"
+          done < <(paste "$base_data_dir/$DISTILLED_DATA_FILE" "$merge_data_dir/$DISTILLED_DATA_FILE")
 
       - name: Upload diff(s)
-        if: ${{ steps.full_responses_diff.outputs.diff_exists}}
         uses: actions/upload-artifact@v3
         with:
           name: ${{ env.DIFF_ARTIFACT_NAME }}
