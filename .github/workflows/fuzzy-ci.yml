@@ -230,7 +230,7 @@ jobs:
       run: |
         # Checking out the merge branch to get the updated lock file in case of lock file update
         git checkout ${{ github.sha }}
-        cp fuzzy-ci-fixtures/irmin-$IRMIN_VERSION.opam-locked irmin/irmin.opam.locked
+        cp .github/workflows/fuzzy-ci-fixtures/irmin-$IRMIN_VERSION.opam-locked irmin/irmin.opam.locked
 
     - name: Install the Irmin depnedencies
       run: |
