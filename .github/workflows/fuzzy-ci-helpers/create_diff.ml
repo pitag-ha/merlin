@@ -26,7 +26,7 @@ let rec loop () =
   close_out oc;
   match label1, label2, reached_delimiter1, reached_delimiter2 with
     | Some label1, Some label2, Some (), Some () ->
-      let diff_cmd = Printf.sprintf "diff -U 10 --label=\"%s\" --label=\"%s\" \"%s\" \"%s\" >> %s" label1 label2 tmp1 tmp2
+      let diff_cmd = Printf.sprintf "diff -U 5 --label=\"%s\" --label=\"%s\" \"%s\" \"%s\" >> %s" label1 label2 tmp1 tmp2
       diff_file in
       let _ = Sys.command diff_cmd in
       loop ()
