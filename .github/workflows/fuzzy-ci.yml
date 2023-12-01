@@ -213,6 +213,7 @@ jobs:
       run: |
         # Running `subst` to have the current commit in the data produced by `merl-an`
         opam exec -- dune subst
+        # Using the detault target, since the check target doesn't work in combination with `-p`
         opam exec -- dune build -p merlin-lib,dot-merlin-reader,merlin
         opam exec -- dune install -p merlin-lib,dot-merlin-reader,merlin
 
@@ -232,7 +233,7 @@ jobs:
         git checkout ${{ github.sha }}
         cp .github/workflows/fuzzy-ci-helpers/irmin-$IRMIN_VERSION.opam-locked irmin/irmin.opam.locked
 
-    - name: Install the Irmin depnedencies
+    - name: Install Irmin's dependencies
       run: |
         opam install irmin irmin-pack --locked -y
       working-directory: irmin
@@ -267,6 +268,18 @@ jobs:
         name: ${{ steps.artifact_name.outputs.name }}
         path: ${{ env.data_dir }}
 
+    - name: Compile diff tool
+      run: |
+        # Taking advantage that ocamlopt is installed on this runner to compile the diff tool here
+        # Currently all runners use x86 chips and the OS is declared the same for all jobs, so sharing the executable should work.
+        opam exec -- ocamlopt -o create_diff .github/workflows/fuzzy-ci-helpers//create_diff.ml
+
+    - name: Upload diff tool
+      uses: actions/upload-artifact@v3
+      with:
+        name: diff_tool
+        path: create_diff
+
   diff:
     name: Generate diff(s)
     runs-on: ubuntu-22.04
@@ -293,8 +306,13 @@ jobs:
       - name: Create diff dir
         run: mkdir -p "$diff_dir"
 
-      - name: Compile diff tool
-        run: ocamlopt -o create_diff .github/workflows/fuzzi-ci-helpers/create_diff.ml
+      - name: Download diff tool
+        uses: actions/download-artifact@v3
+        with:
+          name: diff_tool
+
+      - name: Give diff tool execute permissions
+        run: chmod +x create_diff
 
       - name: Generate full responses diff
         id: full_responses_diff
