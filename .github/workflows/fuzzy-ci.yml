@@ -230,7 +230,7 @@ jobs:
       run: |
         # Checking out the merge branch to get the updated lock file in case of lock file update
         git checkout ${{ github.sha }}
-        cp .github/workflows/fuzzy-ci-fixtures/irmin-$IRMIN_VERSION.opam-locked irmin/irmin.opam.locked
+        cp .github/workflows/fuzzy-ci-helpers/irmin-$IRMIN_VERSION.opam-locked irmin/irmin.opam.locked
 
     - name: Install the Irmin depnedencies
       run: |
@@ -293,16 +293,17 @@ jobs:
       - name: Create diff dir
         run: mkdir -p "$diff_dir"
 
+      - name: Compile diff tool
+        run: ocamlopt -o create_diff .github/workflows/fuzzi-ci-helpers/create_diff.ml
+
       - name: Generate full responses diff
         id: full_responses_diff
         run: |
-          while IFS=$'\t' read -r item1 item2; do
-            label1="base-branch-data $(echo "$item1" | jq -r '.cmd') (id=$(echo "$item1" | jq -r '.sample_id'))"
-            label2="base-branch-data $(echo "$item2" | jq -r '.cmd') (id=$(echo "$item2" | jq -r '.sample_id'))"
-            # To guarantee idempotence in diff generation, we're using `--labels` to avoids time stamps and sha's
-            diff -U 10 --label="$label1" --label="$label2" <(echo "$item1" | jq) <(echo "$item2" | jq) >> "$diff_dir/$FULL_DIFF_FILE"
-          done < <(paste "$base_data_dir/$FULL_DATA_FILE" "$merge_data_dir/$FULL_DATA_FILE")
-          if [ -s "$diff_dir/$DISTILLED_DIFF_FILE" ]; then
+          jq -r -n --slurpfile data1 "$base_data_dir/$FULL_DATA_FILE" --slurpfile data2 "$merge_data_dir/$FULL_DATA_FILE" \
+            'def process_json($data): ($data.cmd + " (id=" + ($data.sample_id | tostring) + ")"), $data;
+            range($data1|length) as $i |  process_json($data1[$i]), "--input-separater--", process_json($data2[$i]), "--diff-cmd-separator--"' \
+            | ./create_diff "--input-separater--" "--diff-cmd-separator--" "$diff_dir/$FULL_DIFF_FILE"
+          if [ -s "$diff_dir/$FULL_DIFF_FILE" ]; then
             echo "diff_exists=true" | tee -a $GITHUB_OUTPUT
           else
             echo "diff_exists=false" | tee -a $GITHUB_OUTPUT
@@ -313,12 +314,10 @@ jobs:
         # If there's no full reponses diff, there also won't be a distilled data diff
         if: ${{ steps.full_responses_diff.outputs.diff_exists == 'true' }}
         run: |
-          while IFS=$'\t' read -r item1 item2; do
-            label1="base-branch-data $(echo "$item1" | jq -r '.cmd') (id=$(echo "$item1" | jq -r '.sample_id'))"
-            label2="base-branch-data $(echo "$item2" | jq -r '.cmd') (id=$(echo "$item2" | jq -r '.sample_id'))"
-            # To guarantee idempotence in diff generation, we're using `--labels` to avoids time stamps and sha's
-            diff -U 10 --label="$label1" --label="$label2" <(echo "$item1" | jq) <(echo "$item2" | jq) >> "$diff_dir/$DISTILLED_DIFF_FILE"
-          done < <(paste "$base_data_dir/$DISTILLED_DATA_FILE" "$merge_data_dir/$DISTILLED_DATA_FILE")
+          jq -r -n --slurpfile data1 "$base_data_dir/$DISTILLED_DATA_FILE" --slurpfile data2 "$merge_data_dir/$DISTILLED_DATA_FILE" \
+            'def process_json($data): ($data.cmd + " (id=" + ($data.sample_id | tostring) + ")"), $data;
+            range($data1|length) as $i |  process_json($data1[$i]), "--input-separater--", process_json($data2[$i]), "--diff-cmd-separator--"' \
+            | ./create_diff "--input-separater--" "--diff-cmd-separator--" "$diff_dir/$DISTILLED_DIFF_FILE"
 
       - name: Upload diff(s)
         uses: actions/upload-artifact@v3
