@@ -213,7 +213,6 @@ jobs:
       run: |
         # Running `subst` to have the current commit in the data produced by `merl-an`
         opam exec -- dune subst
-        # Using the detault target, since the check target doesn't work in combination with `-p`
         opam exec -- dune build -p merlin-lib,dot-merlin-reader,merlin
         opam exec -- dune install -p merlin-lib,dot-merlin-reader,merlin
 
@@ -235,12 +234,20 @@ jobs:
 
     - name: Install Irmin's dependencies
       run: |
-        opam install irmin irmin-pack --locked -y
+        opam install ./irmin.opam.locked --yes
       working-directory: irmin
+
+    - name: Prune Irmin
+      run: |
+        rm -r examples/ bench/
+        find test/ -mindepth 1 -maxdepth 1 -type d -not -name 'irmin-pack' -exec rm -r {} \;
+        find src/ -mindepth 1 -maxdepth 1 -type d -not -name 'irmin-pack' -not -name 'irmin' -not -name 'irmin-tezos' -not -name ppx_irmin -not -name irmin_test -not -name irmin-test -exec rm -r {} \;
+      working-directory: irmin
+
 
     - name: Build Irmin
       run: |
-        opam exec -- dune build -p irmin,irmin-pack,ppx_irmin
+        opam exec -- dune build @check
       working-directory: irmin
 
     - name: Install merl-an

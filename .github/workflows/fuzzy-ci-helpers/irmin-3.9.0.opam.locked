@@ -15,6 +15,7 @@ depends: [
   "bigstringaf" {= "0.9.1" & ?vendor}
   "checkseum" {= "0.5.2" & ?vendor}
   "cmdliner" {= "1.2.0+dune" & ?vendor}
+  "conf-gmp" {= "4"}
   "conf-gnuplot" {= "0.1"}
   "cppo" {= "1.6.9" & ?vendor}
   "csexp" {= "1.5.2" & ?vendor}
@@ -26,6 +27,7 @@ depends: [
   "eqaf" {= "0.9" & ?vendor}
   "findlib" {= "1.9.5+dune" & ?vendor}
   "fmt" {= "0.9.0+dune" & ?vendor}
+  "fpath" {= "0.7.3+dune" & ?vendor}
   "hex" {= "1.5.0" & ?vendor}
   "index" {= "1.6.2" & ?vendor}
   "jsonm" {= "1.0.1+dune" & ?vendor}
@@ -59,17 +61,31 @@ depends: [
   "rusage" {= "1.0.0" & ?vendor}
   "semaphore-compat" {= "1.0.1" & ?vendor}
   "seq" {= "base+dune" & ?vendor}
-  "sexplib0" {= "v0.16.0" & ?vendor}
+  "sexplib0" {= "v0.17~preview.129.00+111" & ?vendor}
   "stdlib-shims" {= "0.3.0" & ?vendor}
   "stringext" {= "1.6.0" & ?vendor}
   "terminal" {= "0.2.2" & ?vendor}
+  "tezos-base58" {= "1.0.0" & ?vendor}
   "uri" {= "4.4.0" & ?vendor}
   "uucp" {= "15.1.0+dune" & ?vendor}
   "uuidm" {= "0.9.8+dune" & ?vendor}
   "uutf" {= "1.0.3+dune" & ?vendor}
   "vector" {= "1.0.0" & ?vendor}
+  "yojson" {= "2.1.2" & ?vendor}
+  "zarith" {= "1.12+dune" & ?vendor}
 ]
 depexts: [
+  ["gmp"] {os = "freebsd"}
+  ["gmp"] {os = "openbsd"}
+  ["gmp"] {os-distribution = "nixos"}
+  ["gmp"] {os = "macos" & os-distribution = "homebrew"}
+  ["gmp"] {os = "win32" & os-distribution = "cygwinports"}
+  ["gmp"] {os-distribution = "macports" & os = "macos"}
+  ["gmp" "gmp-devel"] {os-distribution = "centos"}
+  ["gmp" "gmp-devel"] {os-distribution = "fedora"}
+  ["gmp" "gmp-devel"] {os-distribution = "ol"}
+  ["gmp-dev"] {os-distribution = "alpine"}
+  ["gmp-devel"] {os-family = "suse" | os-family = "opensuse"}
   ["gnuplot"] {os = "freebsd"}
   ["gnuplot"] {os-distribution = "alpine"}
   ["gnuplot"] {os-distribution = "centos"}
@@ -79,6 +95,8 @@ depexts: [
   ["gnuplot"] {os = "macos" & os-distribution = "homebrew"}
   ["gnuplot"] {os-family = "suse" | os-family = "opensuse"}
   ["gnuplot-x11"] {os-family = "debian"}
+  ["libgmp-dev"] {os-family = "debian"}
+  ["libgmp-dev"] {os-family = "ubuntu"}
 ]
 pin-depends: [
   [
@@ -156,6 +174,10 @@ pin-depends: [
   [
     "fmt.0.9.0+dune"
     "https://github.com/dune-universe/fmt/releases/download/v0.9.0%2Bdune/fmt-0.9.0.dune.tbz"
+  ]
+  [
+    "fpath.0.7.3+dune"
+    "https://github.com/dune-universe/fpath/archive/v0.7.3+dune.tar.gz"
   ]
   [
     "hex.1.5.0"
@@ -271,8 +293,8 @@ pin-depends: [
   ]
   ["seq.base+dune" "https://github.com/c-cube/seq/archive/0.2.2.tar.gz"]
   [
-    "sexplib0.v0.16.0"
-    "https://ocaml.janestreet.com/ocaml-core/v0.16/files/sexplib0-v0.16.0.tar.gz"
+    "sexplib0.v0.17~preview.129.00+111"
+    "https://github.com/janestreet/sexplib0/archive/c663324f6d4ea85552b3b186b89814bfe953792f.tar.gz"
   ]
   [
     "stdlib-shims.0.3.0"
@@ -285,6 +307,10 @@ pin-depends: [
   [
     "terminal.0.2.2"
     "https://github.com/craigfe/progress/releases/download/0.2.2/progress-0.2.2.tbz"
+  ]
+  [
+    "tezos-base58.1.0.0"
+    "https://github.com/tarides/tezos-base58/releases/download/1.0.0/tezos-base58-1.0.0.tbz"
   ]
   [
     "uri.4.4.0"
@@ -306,8 +332,18 @@ pin-depends: [
     "vector.1.0.0"
     "https://github.com/backtracking/vector/releases/download/1.0.0/vector-1.0.0.tbz"
   ]
+  [
+    "yojson.2.1.2"
+    "https://github.com/ocaml-community/yojson/releases/download/2.1.2/yojson-2.1.2.tbz"
+  ]
+  [
+    "zarith.1.12+dune"
+    "https://github.com/dune-universe/Zarith/releases/download/1.12%2Bdune/zarith-1.12.dune.tbz"
+  ]
 ]
-x-opam-monorepo-cli-args: ["irmin" "irmin-pack" "--ocaml-version" "4.14.1"]
+x-opam-monorepo-cli-args: [
+  "irmin" "irmin-pack" "irmin-tezos" "--ocaml-version=4.14.1"
+]
 x-opam-monorepo-duniverse-dirs: [
   [
     "https://github.com/CraigFe/ocaml-rusage/releases/download/1.0.0/rusage-1.0.0.tbz"
@@ -374,6 +410,14 @@ x-opam-monorepo-duniverse-dirs: [
     ]
   ]
   [
+    "https://github.com/dune-universe/Zarith/releases/download/1.12%2Bdune/zarith-1.12.dune.tbz"
+    "Zarith"
+    [
+      "sha256=af618fe6f029cd2cafe0e9807c3cb230ba8080dfd61e350fcdcfec63064ea904"
+      "sha512=84a3ed58773ddb143f2c309a17686a3c6c7ae930fbdfb2c736f80c61dbfe2c0972a9913d2b111e7b3a2cfd8e5b1999210ac88464833fe8dee798a4154a1aa966"
+    ]
+  ]
+  [
     "https://github.com/dune-universe/astring/archive/v0.8.5+dune.tar.gz"
     "astring"
     [
@@ -394,6 +438,13 @@ x-opam-monorepo-duniverse-dirs: [
     [
       "sha256=844ce674b3146aaf9c14088a0b817cef10c7152054d3cc984543463da978ff81"
       "sha512=27765423f43bdfbbdee50906faad14ecf653aaf2fdfc4db6b94791460aa32f3a3490b9d0c1a04aa3ecb0ac4333ea7ce5054251a67a0d67b64f3eb6d737afbf93"
+    ]
+  ]
+  [
+    "https://github.com/dune-universe/fpath/archive/v0.7.3+dune.tar.gz"
+    "fpath"
+    [
+      "sha256=792ecf88d2a311596106e30775864629558ed0c2d0501590fda55f363dbb6ebc"
     ]
   ]
   [
@@ -473,6 +524,13 @@ x-opam-monorepo-duniverse-dirs: [
     "https://github.com/janestreet/result/releases/download/1.5/result-1.5.tbz"
     "result"
     ["md5=1b82dec78849680b49ae9a8a365b831b"]
+  ]
+  [
+    "https://github.com/janestreet/sexplib0/archive/c663324f6d4ea85552b3b186b89814bfe953792f.tar.gz"
+    "sexplib0"
+    [
+      "sha256=9adae2d0907951e81be3b4179907d4287b4a904c9513eb44eb0423a48a4fe137"
+    ]
   ]
   [
     "https://github.com/kit-ty-kate/bytes/archive/v0.1.0.tar.gz"
@@ -602,6 +660,14 @@ x-opam-monorepo-duniverse-dirs: [
     ]
   ]
   [
+    "https://github.com/ocaml-community/yojson/releases/download/2.1.2/yojson-2.1.2.tbz"
+    "yojson"
+    [
+      "sha256=59f2f1abbfc8a7ccbdbf608894e5c75e8a76006e34899254446f83e200dfb4f9"
+      "sha512=309cba7568dec51de20c7ab8df033258c275b8d58b0a36a66b26e673a3bc050cbd7e39ff8fe4796e89263e125bcc21e04dc36a394f3cc201956887eee1fb281a"
+    ]
+  ]
+  [
     "https://github.com/ocaml-dune/csexp/releases/download/1.5.2/csexp-1.5.2.tbz"
     "csexp"
     [
@@ -695,12 +761,13 @@ x-opam-monorepo-duniverse-dirs: [
     ]
   ]
   [
-    "https://ocaml.janestreet.com/ocaml-core/v0.16/files/sexplib0-v0.16.0.tar.gz"
-    "sexplib0"
+    "https://github.com/tarides/tezos-base58/releases/download/1.0.0/tezos-base58-1.0.0.tbz"
+    "tezos-base58"
     [
-      "sha256=86dba26468194512f789f2fb709063515a9cb4e5c4461c021c239a369590701d"
+      "sha256=aa99e1c25e3394cc8b01daeba54369f376348553fd2254beedd5f8569cbb8293"
+      "sha512=17415f5731a5e321043b21f67ca541a2ef5fe7e94fa7a7652164324a02176f3abb18163f8954659cd5470611346688f39be1154850e90a8df08f637bbd972ef1"
     ]
   ]
 ]
-x-opam-monorepo-root-packages: ["irmin" "irmin-pack"]
+x-opam-monorepo-root-packages: ["irmin" "irmin-pack" "irmin-tezos"]
 x-opam-monorepo-version: "0.3"
