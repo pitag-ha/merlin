@@ -249,11 +249,7 @@ jobs:
 
     - name: Create new data
       run: |
-        opam exec -- merl-an behavior --queries=type-enclosing,occurrences,locate,complete-prefix,errors --sample-size=30 --data=${{ env.data_dir }} --merlin=ocamlmerlin --project=irmin/src/irmin/
-        # TODO: Modify `merl-an` so that it's possible to pass in a list of projects, i.e. irmin/src/irmin/, irmin/src/irmin-pack and irmin/test/irmin-pack
-        # opam exec -- merl-an behavior --queries=type-enclosing,occurrences,locate,complete-prefix,errors --sample-size=30 --data=irmin_pack_data --merlin=ocamlmerlin --project=irmin/src/irmin-pack --extensions=ml
-        # opam exec -- merl-an behavior --queries=type-enclosing,occurrences,locate,complete-prefix,errors --sample-size=30 --data=irmin_pack_test_data --merlin=ocamlmerlin --project=irmin/test/irmin-pack --extensions=ml
-      # working-directory: ${{ env.data_dir }}
+        opam exec -- merl-an behavior --queries=type-enclosing,occurrences,locate,complete-prefix,errors --sample-size=30 --data=${{ env.data_dir }} --merlin=ocamlmerlin --project=irmin/src/irmin,irmin/src/irmin-pack,irmin/test/irmin-pack
 
     - name: Create name for data artifact
       id: artifact_name
@@ -398,7 +394,7 @@ jobs:
               exit 0
             else
               echo "--------beginning of full reponses diff--------"
-              cat "$FULL_DIFF_FILE" | head -n 10
+              cat "$FULL_DIFF_FILE" | head -n 100
               echo "--------end of full reponses diff--------"
               echo "--------beginning of distilled data diff--------"
               cat "$DISTILLED_DIFF_FILE" | head -n 10
