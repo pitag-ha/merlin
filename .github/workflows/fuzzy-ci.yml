@@ -219,12 +219,12 @@ jobs:
         opam exec -- dune build -p merlin-lib,dot-merlin-reader,merlin
         opam exec -- dune install -p merlin-lib,dot-merlin-reader,merlin
 
-    - name: Cache irmin/
+    - name: Cache irmin
       uses: actions/cache@v2
       id: irmin-cache
       with:
         path: irmin/
-        key: os${{ runner.os }}+arch${{ runner.arch }}+${{ hashFiles('fuzzy-ci-helpers/irmin.3.9.0.opam.locked') }}+${{ env.COMPILER_VERSION }}
+        key: os${{ runner.os }}+arch${{ runner.arch }}+${{ hashFiles('fuzzy-ci-helpers/irmin.3.9.0.opam.locked') }}+${{ env.COMPILER_VERSION }}-force-invalication-this-time
 
     - name: Download Irmin tarball
       if: steps.irmin-cache.outputs.cache-hit != 'true'
@@ -268,7 +268,7 @@ jobs:
       if: steps.irmin-cache.outputs.cache-hit != 'true'
       run: opam install opam-monorepo --yes
 
-    - name: Install Irmin's test dependencies with opam-monorepo
+    - name: Pull in Irmin's dependencies
       if: steps.irmin-cache.outputs.cache-hit != 'true'
       run: |
         git checkout ${{ github.sha }}
@@ -293,7 +293,22 @@ jobs:
       if: steps.irmin-cache.outputs.cache-hit != 'true'
       run: du -sh irmin
 
+    - name: Out of size curiosity, build Irmin with default target
+      run: opam exec -- dune build
+      working-directory: irmin
+
+    - name: Print size of built Irmin dir
+      run: du -sh irmin
+
+    - name: Cache merl-an
+      uses: actions/cache@v2
+      id: merl-an-cache
+      with:
+        path: $GITHUB_WORKSPACE/_opam/bin/merl-an
+        key: os${{ runner.os }}+arch${{ runner.arch }}+merl-an-sha$MERL_AN_SHA
+
     - name: Install merl-an
+      if: steps.merl-an-cache.outputs.cache-hit != 'true'
       run: opam pin -y merl-an https://github.com/pitag-ha/merl-an.git#$MERL_AN_SHA
       # TODO: Cache the merli-an binary with key: os${{ runner.os }}+arch${{ runner.arch }}+merl-an-sha$MERL_AN_SHA
 
