@@ -226,15 +226,21 @@ jobs:
     - name: Decompress Irmin tarball
       run: tar xvf irmin-$IRMIN_VERSION.tbz -C irmin --strip-components=1
 
-    - name: Get Irmin's lock file
+    - name: Get Irmin's lock files
       run: |
-        # Checking out the merge branch to get the updated lock file in case of lock file update
+        # If the lock files are updated in the PR (e.g. the PR upgrades the OCaml version), they need to be checked out to the right branch
         git checkout ${{ github.sha }}
-        cp .github/workflows/fuzzy-ci-helpers/irmin-$IRMIN_VERSION.opam-locked irmin/irmin.opam.locked
+        cp .github/workflows/fuzzy-ci-helpers/irmin*.opam.locked irmin/
 
     - name: Install Irmin's dependencies
       run: |
-        opam install ./irmin.opam.locked --yes
+        # opam-monorepo generated lockfiles can't be handled properly by opam, so the lock files are generated with `opam lock`
+        # `opam lock` generated files don't contain depexts, so we need to install them manually
+        sudo apt install gnuplot-x11
+        opam pin add irmin . --locked --yes
+        opam pin add irmin-pack . --locked --with-test --yes
+        # Using `--with-test` also for `irmin-tezos`, because some of `irmin-pack`'s test dependencies are declared in `irmin-tezos`'s opam file.
+        opam pin add irmin-tezos . --locked --with-test --yes
       working-directory: irmin
 
     - name: Prune Irmin
@@ -243,7 +249,6 @@ jobs:
         find test/ -mindepth 1 -maxdepth 1 -type d -not -name 'irmin-pack' -exec rm -r {} \;
         find src/ -mindepth 1 -maxdepth 1 -type d -not -name 'irmin-pack' -not -name 'irmin' -not -name 'irmin-tezos' -not -name ppx_irmin -not -name irmin_test -not -name irmin-test -exec rm -r {} \;
       working-directory: irmin
-
 
     - name: Build Irmin
       run: |
