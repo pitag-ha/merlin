@@ -226,21 +226,35 @@ jobs:
     - name: Decompress Irmin tarball
       run: tar xvf irmin-$IRMIN_VERSION.tbz -C irmin --strip-components=1
 
+    # - name: Get Irmin's lock files
+    #   run: |
+    #     # If the lock files are updated in the PR (e.g. the PR upgrades the OCaml version), they need to be checked out to the right branch
+    #     git checkout ${{ github.sha }}
+    #     cp .github/workflows/fuzzy-ci-helpers/irmin*.opam.locked irmin/
+
+    # - name: Install Irmin's dependencies
+    #   run: |
+    #     # opam-monorepo generated lockfiles can't be handled properly by opam, so the lock files are generated with `opam lock`
+    #     # `opam lock` generated files don't contain depexts, so we need to install them manually
+    #     sudo apt install gnuplot-x11
+    #     opam pin add irmin . --locked --yes
+    #     opam pin add irmin-pack . --locked --with-test --yes
+    #     # Using `--with-test` also for `irmin-tezos`, because some of `irmin-pack`'s test dependencies are declared in `irmin-tezos`'s opam file.
+    #     opam pin add irmin-tezos . --locked --with-test --yes
+    #   working-directory: irmin
+
     - name: Get Irmin's lock files
       run: |
         # If the lock files are updated in the PR (e.g. the PR upgrades the OCaml version), they need to be checked out to the right branch
+        # TODO: Think about if this is the right workflow. Maybe it's better to use the lock file from the corresponding branch.
         git checkout ${{ github.sha }}
-        cp .github/workflows/fuzzy-ci-helpers/irmin*.opam.locked irmin/
+        cp .github/workflows/fuzzy-ci-helpers/irmin.3.9.0.opam.locked irmin/irmin.opam.locked
 
-    - name: Install Irmin's dependencies
+    - name: Install Irmin's test dependencies with opam-monorepo
       run: |
-        # opam-monorepo generated lockfiles can't be handled properly by opam, so the lock files are generated with `opam lock`
-        # `opam lock` generated files don't contain depexts, so we need to install them manually
-        sudo apt install gnuplot-x11
-        opam pin add irmin . --locked --yes
-        opam pin add irmin-pack . --locked --with-test --yes
-        # Using `--with-test` also for `irmin-tezos`, because some of `irmin-pack`'s test dependencies are declared in `irmin-tezos`'s opam file.
-        opam pin add irmin-tezos . --locked --with-test --yes
+        git checkout ${{ github.sha }}
+        opam install opam-monorepo --yes
+        opam monorepo pull --lockfile=irmin.opam.locked --yes
       working-directory: irmin
 
     - name: Prune Irmin
@@ -259,7 +273,7 @@ jobs:
       run: opam pin -y merl-an https://github.com/pitag-ha/merl-an.git#$MERL_AN_SHA
       # TODO: Cache the merli-an binary with key: os${{ runner.os }}+arch${{ runner.arch }}+merl-an-sha$MERL_AN_SHA
 
-    - name: Create new data
+    - name: Create data set of Merlin responses
       run: |
         opam exec -- merl-an behavior --queries=type-enclosing,occurrences,locate,complete-prefix,errors --sample-size=30 --data=${{ env.data_dir }} --merlin=ocamlmerlin --project=irmin/src/irmin,irmin/src/irmin-pack,irmin/test/irmin-pack
 
