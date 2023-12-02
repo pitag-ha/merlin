@@ -86,7 +86,6 @@ jobs:
     name: Approve diff
     if: github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'fuzzy-diff-looks-good'
     runs-on: ubuntu-22.04
-    # FIXME: Which permission is necessary?
     permissions:
       pull-requests: write
     steps:
@@ -207,6 +206,25 @@ jobs:
         ocaml-compiler: ${{ env.COMPILER_VERSION }}
         dune-cache: true
 
+    - name: Inspect workspace
+      run: ls --all
+
+    - name: Inspect .github/workflows/
+      run: ls .github/workflows/
+
+    - name: Compile diff tool
+      if: ${{ matrix.commit == 'merge_branch' }}
+      run: |
+        # Taking advantage that ocamlopt is installed on this runner now: compile the diff tool here and share it with the next job where it's needed.
+        # All runners are hosted on x86 machines and all jobs in this workflow declare the same OS, so this should workTM.
+        opam exec -- ocamlopt -o create_diff .github/workflows/fuzzy-ci-helpers/create_diff.ml
+
+    - name: Upload diff tool
+      uses: actions/upload-artifact@v3
+      with:
+        name: diff_tool
+        path: create_diff
+
     - name: Install merlin dependencies
       run: |
         opam pin menhirLib 20201216 --no-action
@@ -219,12 +237,12 @@ jobs:
         opam exec -- dune build -p merlin-lib,dot-merlin-reader,merlin
         opam exec -- dune install -p merlin-lib,dot-merlin-reader,merlin
 
-    - name: Cache irmin
+    - name: Pull irmin and its deps from cache if possible
       uses: actions/cache@v2
       id: irmin-cache
       with:
         path: irmin/
-        key: os${{ runner.os }}+arch${{ runner.arch }}+${{ hashFiles('fuzzy-ci-helpers/irmin.3.9.0.opam.locked') }}+${{ env.COMPILER_VERSION }}-force-invalication-this-time
+        key: os${{ runner.os }}+arch${{ runner.arch }}+${{ hashFiles('fuzzy-ci-helpers/irmin.3.9.0.opam.locked') }}+${{ env.IRMIN_VERSION }}+${{ env.COMPILER_VERSION }}
 
     - name: Download Irmin tarball
       if: steps.irmin-cache.outputs.cache-hit != 'true'
@@ -284,36 +302,25 @@ jobs:
       working-directory: irmin
 
     - name: Build Irmin
-      if: steps.irmin-cache.outputs.cache-hit != 'true'
       run: |
         opam exec -- dune build @check
       working-directory: irmin
 
-    - name: Print size of built Irmin dir
-      if: steps.irmin-cache.outputs.cache-hit != 'true'
-      run: du -sh irmin
-
-    - name: Out of size curiosity, build Irmin with default target
-      run: opam exec -- dune build
-      working-directory: irmin
-
-    - name: Print size of built Irmin dir
-      run: du -sh irmin
-
-    - name: Cache merl-an
+    - name: Pull merl-an from cache if possible
       uses: actions/cache@v2
       id: merl-an-cache
       with:
-        path: $GITHUB_WORKSPACE/_opam/bin/merl-an
+        path: /usr/local/bin/merl-an
+        # path: $GITHUB_WORKSPACE/_opam/bin/merl-an
         key: os${{ runner.os }}+arch${{ runner.arch }}+merl-an-sha$MERL_AN_SHA
 
     - name: Install merl-an
       if: steps.merl-an-cache.outputs.cache-hit != 'true'
       run: opam pin -y merl-an https://github.com/pitag-ha/merl-an.git#$MERL_AN_SHA
-      # TODO: Cache the merli-an binary with key: os${{ runner.os }}+arch${{ runner.arch }}+merl-an-sha$MERL_AN_SHA
 
-    - name: Find where merl-an lives
-      run: opam exec -- which merl-an
+    - name: Make merl-an available outside of opam env
+      if: steps.merl-an-cache.outputs.cache-hit != 'true'
+      run: opam exec -- cp $GITHUB_WORKSPACE/_opam/bin/merl-an /usr/local/bin/merl-an
 
     - name: Create data set of Merlin responses
       run: |
@@ -332,17 +339,6 @@ jobs:
         name: ${{ steps.artifact_name.outputs.name }}
         path: ${{ env.data_dir }}
 
-    - name: Compile diff tool
-      run: |
-        # Taking advantage that ocamlopt is installed on this runner to compile the diff tool here
-        # Currently all runners use x86 chips and the OS is declared the same for all jobs, so sharing the executable should work.
-        opam exec -- ocamlopt -o create_diff .github/workflows/fuzzy-ci-helpers//create_diff.ml
-
-    - name: Upload diff tool
-      uses: actions/upload-artifact@v3
-      with:
-        name: diff_tool
-        path: create_diff
 
   diff:
     name: Generate diff(s)
@@ -467,7 +463,7 @@ jobs:
               echo "--------beginning of distilled data diff--------"
               cat "$DISTILLED_DIFF_FILE" | head -n 100
               echo "--------end of distilled data diff--------"
-              printf "The diff has changed since it was approved. There's a 10-line head of the new diffs printed above. The whole diff can be downloaded from $CURRENT_ACTION_URL .\nIf the new diff looks good, please set the $LABEL_NAME label on the PR again. I'm removing the $LABEL_NAME label for now.\ Previous sha256: ${{ steps.approved_diff_info.outputs.hash }}\n Current sha256: $current_diff_hash""
+              printf "The diff has changed since it was approved. There's a 10-line head of the new diffs printed above. The whole diff can be downloaded from $CURRENT_ACTION_URL .\nIf the new diff looks good, please set the $LABEL_NAME label on the PR again. I'm removing the $LABEL_NAME label for now.\ Previous sha256: ${{ steps.approved_diff_info.outputs.hash }}\n Current sha256: $current_diff_hash"
               status=$(curl -sL -w "%{http_code}" -o output.txt -X DELETE -H "Authorization: Bearer $TOKEN" "$GH_API_LABELS/$LABEL_NAME")
               if [ "$status" -ne 200 ]; then
                 echo "Something went wrong trying to remove the $LABEL_NAME label. Please, remove it manually if the diff doesn't look good to you."
