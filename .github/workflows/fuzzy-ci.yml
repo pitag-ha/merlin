@@ -38,6 +38,9 @@ env:
   # TODO: Release merl-an and install a certain version instead of pinning it to a certain commit
   MERL_AN_SHA: 1643fb7a9958379fb4ed8d7c5169146aaa88f5b7
 
+  # Use the compiler version that's used on master. It needs to form part of Irmin's build cache key
+  COMPILER_VERSION: ocaml-base-compiler.4.14.1
+
 jobs:
   # download_curl_api_url:
   #   runs-on: ubuntu-latest
@@ -201,7 +204,7 @@ jobs:
       uses: ocaml/setup-ocaml@v2
       with:
         # Adapt this on other branches and bump this when master bumps the compiler version
-        ocaml-compiler: ocaml-base-compiler.4.14.1
+        ocaml-compiler: ${{ env.COMPILER_VERSION }}
         dune-cache: true
 
     - name: Install merlin dependencies
@@ -216,14 +219,24 @@ jobs:
         opam exec -- dune build -p merlin-lib,dot-merlin-reader,merlin
         opam exec -- dune install -p merlin-lib,dot-merlin-reader,merlin
 
+    - name: Cache irmin/
+      uses: actions/cache@v2
+      id: irmin-cache
+      with:
+        path: irmin/
+        key: os${{ runner.os }}+arch${{ runner.arch }}+${{ hashFiles('fuzzy-ci-helpers/irmin.3.9.0.opam.locked') }}+${{ env.COMPILER_VERSION }}
+
     - name: Download Irmin tarball
+      if: steps.irmin-cache.outputs.cache-hit != 'true'
       run: |
         wget https://github.com/mirage/irmin/releases/download/$IRMIN_VERSION/irmin-$IRMIN_VERSION.tbz
 
     - name: Create irmin dir
+      if: steps.irmin-cache.outputs.cache-hit != 'true'
       run: mkdir -p irmin
 
     - name: Decompress Irmin tarball
+      if: steps.irmin-cache.outputs.cache-hit != 'true'
       run: tar xvf irmin-$IRMIN_VERSION.tbz -C irmin --strip-components=1
 
     # - name: Get Irmin's lock files
@@ -244,20 +257,26 @@ jobs:
     #   working-directory: irmin
 
     - name: Get Irmin's lock files
+      if: steps.irmin-cache.outputs.cache-hit != 'true'
       run: |
         # If the lock files are updated in the PR (e.g. the PR upgrades the OCaml version), they need to be checked out to the right branch
         # TODO: Think about if this is the right workflow. Maybe it's better to use the lock file from the corresponding branch.
         git checkout ${{ github.sha }}
         cp .github/workflows/fuzzy-ci-helpers/irmin.3.9.0.opam.locked irmin/irmin.opam.locked
 
+    - name: Install opam monorepo
+      if: steps.irmin-cache.outputs.cache-hit != 'true'
+      run: opam install opam-monorepo --yes
+
     - name: Install Irmin's test dependencies with opam-monorepo
+      if: steps.irmin-cache.outputs.cache-hit != 'true'
       run: |
         git checkout ${{ github.sha }}
-        opam install opam-monorepo --yes
         opam monorepo pull --lockfile=irmin.opam.locked --yes
       working-directory: irmin
 
     - name: Prune Irmin
+      if: steps.irmin-cache.outputs.cache-hit != 'true'
       run: |
         rm -r examples/ bench/
         find test/ -mindepth 1 -maxdepth 1 -type d -not -name 'irmin-pack' -exec rm -r {} \;
@@ -265,13 +284,21 @@ jobs:
       working-directory: irmin
 
     - name: Build Irmin
+      if: steps.irmin-cache.outputs.cache-hit != 'true'
       run: |
         opam exec -- dune build @check
       working-directory: irmin
 
+    - name: Print size of built Irmin dir
+      if: steps.irmin-cache.outputs.cache-hit != 'true'
+      run: du -sh irmin
+
     - name: Install merl-an
       run: opam pin -y merl-an https://github.com/pitag-ha/merl-an.git#$MERL_AN_SHA
       # TODO: Cache the merli-an binary with key: os${{ runner.os }}+arch${{ runner.arch }}+merl-an-sha$MERL_AN_SHA
+
+    - name: Find where merl-an lives
+      run: opam exec -- which merl-an
 
     - name: Create data set of Merlin responses
       run: |
@@ -423,9 +450,9 @@ jobs:
               cat "$FULL_DIFF_FILE" | head -n 100
               echo "--------end of full reponses diff--------"
               echo "--------beginning of distilled data diff--------"
-              cat "$DISTILLED_DIFF_FILE" | head -n 10
+              cat "$DISTILLED_DIFF_FILE" | head -n 100
               echo "--------end of distilled data diff--------"
-              printf "The diff has changed since it was approved. There's a 10-line head of the new diffs printed above. The whole diff can be downloaded from $CURRENT_ACTION_URL .\nIf the new diff looks good, please set the $LABEL_NAME label on the PR again. I'm removing the $LABEL_NAME label for now."
+              printf "The diff has changed since it was approved. There's a 10-line head of the new diffs printed above. The whole diff can be downloaded from $CURRENT_ACTION_URL .\nIf the new diff looks good, please set the $LABEL_NAME label on the PR again. I'm removing the $LABEL_NAME label for now.\ Previous sha256: ${{ steps.approved_diff_info.outputs.hash }}\n Current sha256: $current_diff_hash""
               status=$(curl -sL -w "%{http_code}" -o output.txt -X DELETE -H "Authorization: Bearer $TOKEN" "$GH_API_LABELS/$LABEL_NAME")
               if [ "$status" -ne 200 ]; then
                 echo "Something went wrong trying to remove the $LABEL_NAME label. Please, remove it manually if the diff doesn't look good to you."
