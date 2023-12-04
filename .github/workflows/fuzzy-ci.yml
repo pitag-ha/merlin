@@ -359,8 +359,8 @@ jobs:
         id: full_responses_diff
         run: |
           jq -r -n --slurpfile data1 "$base_data_dir/$FULL_DATA_FILE" --slurpfile data2 "$merge_data_dir/$FULL_DATA_FILE" \
-            'def process_json($data): ($data.cmd + " (id=" + ($data.sample_id | tostring) + ")"), $data;
-            range($data1|length) as $i |  process_json($data1[$i]), "--input-separater--", process_json($data2[$i]), "--diff-cmd-separator--"' \
+            'def process_json($branch; $data): ($branch + ": " + $data.cmd + " (id=" + ($data.sample_id | tostring) + ")"), $data;
+            range($data1|length) as $i |  process_json("base branch"; $data1[$i]), "--input-separater--", process_json("merge branch"; $data2[$i]), "--diff-cmd-separator--"' \
             | ./create_diff "--input-separater--" "--diff-cmd-separator--" "$diff_dir/$FULL_DIFF_FILE"
           if [ -s "$diff_dir/$FULL_DIFF_FILE" ]; then
             echo "diff_exists=true" | tee -a $GITHUB_OUTPUT
@@ -429,12 +429,12 @@ jobs:
           github_api_labels_url: ${{ github.event.pull_request.base.repo.url }}/issues/${{ github.event.pull_request.number }}/labels
         run: |
           print_head_of_diffs () {
-            echo "--------beginning of full responses diff--------"
-            cat "$FULL_DIFF_FILE" | head -n 100
-            echo "--------end of full responses diff--------"
-            echo "--------beginning of distilled data diff--------"
-            cat "$DISTILLED_DIFF_FILE" | head -n 100
-            echo "--------end of distilled data diff--------"
+            echo "--------beginning of full responses diff head--------"
+            head -n 100 "$FULL_DIFF_FILE"
+            echo "--------end of full responses diff head--------"
+            echo "--------beginning of distilled data diff head--------"
+            head -n 1-- "$DISTILLED_DIFF_FILE"
+            echo "--------end of distilled data diff head--------"
           }
 
           # FIXME (?): Are nested conditionals always so ugly in Bash, or is there a better way? Option types and the possibility to match would help a lot.
