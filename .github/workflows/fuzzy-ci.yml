@@ -135,30 +135,11 @@ jobs:
           approved_diffs_hash: ${{ steps.diff_hash.outputs.hash }}
         run: |
           msg=$( cat <<EOF
-          This PR introduces a change in some Merlin query response(s), that's captured by the fuzzy-test CI. The diff of the CI has been approved in its following state:
-          - 256-sha of full reponses diff hash: $approved_diffs_hash
-          - The diff can be found in the artifact \`$DIFF_ARTIFACT_NAME\` on $ACTIONS_RUNS_ENDPOINT/$approved_diffs_workflow_run . It contains the difference in the responses of \`ocamlmerlin\` when run on randomly chosen samples with Merlin checked out to 1. the PR's base branch and 2. the PRs merge branch.
-
-          Note: The `ocamlmerlin` responses on the samples have also been distilled down to
-            - What kind of response does Merlin give (return or failure or error etc.)?
-            - Has the Merlin server crashed since the last query?
+          This PR changes the response of some of the `ocamlmerlin` queries, that were run and analyzed by the [Merlin Fuzzy CI](https://github.com/ocaml/merlin/wiki/Merlin-Fuzzy-CI). The change is not considered a regression, the analyzis of this PR has been approved in its following state:
+          - URL to download the generated data sets and their diffs between PR base branch and merge branch (at the moment of approval): $ACTIONS_RUNS_ENDPOINT/$approved_diffs_workflow_run
+          - 256-sha of full reponses diff: $approved_diffs_hash
           EOF
           )
-          if [ -s "$DISTILLED_DIFF_FILE" ]; then
-              msg+=$( cat <<EOF
-
-
-          Each of the three artifacts on $ACTIONS_RUNS_ENDPOINT/$approved_diffs_workflow_run contain both the distilled version and the full reponses.
-          EOF
-          )
-          else
-              msg+=$( cat <<EOF
-
-
-          However, the behavior change of this PR is too subtile to be caught by that distilled data. Have a look at the full responses.
-          EOF
-          )
-          fi
           jq -n --arg msg "$msg" '{ body: $msg }' | tee -a body.json
 
       - name: Write comment on PR
@@ -420,15 +401,12 @@ jobs:
         with:
           name: ${{ env.DIFF_ARTIFACT_NAME }}
 
-      - name: Ls
-        run: ls
-
       - name: Get body of approval comment on PR
         if: ${{ env.earlier_diff_was_approved == 'true' }}
         id: approval_comment
         env:
           # FIXME: Avoid hard-coding the message start. Instead, factor out the msg and take its first line.
-          msg_start: "This PR introduces a change in some Merlin query response(s), that's captured by the fuzzy-test CI."
+          msg_start: "This PR changes the response of some of the `ocamlmerlin` queries"
         run: |
           # FIXME: This will give a wrong result, if the PR had more than 100 comments before the last diff approval
           body=$(curl -s "$GH_API_COMMENTS?per_page=100" | jq --arg msg_start "$msg_start" 'map(select(.body | startswith($msg_start))) | max_by(.'created_by') | .body' | tee -a)
@@ -438,7 +416,7 @@ jobs:
         if: ${{ env.earlier_diff_was_approved == 'true' }}
         env:
           # FIXME: Avoid hard-coding the message start. Instead, factor out the msg and take its first line.
-          msg_start: "This PR introduces a change in some Merlin query response(s), that's captured by the fuzzy-test CI."
+          msg_start: "This PR changes the response of some of the `ocamlmerlin` queries"
         id: approved_diff_info
         run: |
           # FIXME: This will give a wrong result, if the PR had more than 100 comments before the last diff approval
@@ -450,6 +428,16 @@ jobs:
         env:
           github_api_labels_url: ${{ github.event.pull_request.base.repo.url }}/issues/${{ github.event.pull_request.number }}/labels
         run: |
+          print_head_of_diffs () {
+            echo "--------beginning of full responses diff--------"
+            cat "$FULL_DIFF_FILE" | head -n 100
+            echo "--------end of full responses diff--------"
+            echo "--------beginning of distilled data diff--------"
+            cat "$DISTILLED_DIFF_FILE" | head -n 100
+            echo "--------end of distilled data diff--------"
+          }
+
+          # FIXME (?): Are nested conditionals always so ugly in Bash, or is there a better way? Option types and the possibility to match would help a lot.
           if $earlier_diff_was_approved; then
             echo "Earlier diff was approved."
             current_diff_hash=$(sha256sum "$FULL_DIFF_FILE" | awk '{print $1}')
@@ -457,37 +445,23 @@ jobs:
               echo "This diff has been approved earlier. Everything ok."
               exit 0
             else
-              echo "--------beginning of full reponses diff--------"
-              cat "$FULL_DIFF_FILE" | head -n 100
-              echo "--------end of full reponses diff--------"
-              echo "--------beginning of distilled data diff--------"
-              cat "$DISTILLED_DIFF_FILE" | head -n 100
-              echo "--------end of distilled data diff--------"
-              printf "The diff has changed since it was approved. There's a 10-line head of the new diffs printed above. The whole diff can be downloaded from $CURRENT_ACTION_URL .\nIf the new diff looks good, please set the $LABEL_NAME label on the PR again. I'm removing the $LABEL_NAME label for now.\ Previous sha256: ${{ steps.approved_diff_info.outputs.hash }}\n Current sha256: $current_diff_hash"
+              print_head_of_diffs
+              printf "The diff has changed since it was approved. So I'm removing the $LABEL_NAME label. If the new diff looks good, please set the label again.\n\
+              There's a head of the new diffs printed above. The whole diffs can be downloaded from $CURRENT_ACTION_URL.\n\
+              Previous sha256: ${{ steps.approved_diff_info.outputs.hash }}\n\
+              Current sha256: $current_diff_hash"
               status=$(curl -sL -w "%{http_code}" -o output.txt -X DELETE -H "Authorization: Bearer $TOKEN" "$GH_API_LABELS/$LABEL_NAME")
-              if [ "$status" -ne 200 ]; then
-                echo "Something went wrong trying to remove the $LABEL_NAME label. Please, remove it manually if the diff doesn't look good to you."
-              cat output.txt
-              fi
-              exit 2
             fi
           else
             if $current_diff_exists; then
-              echo "--------beginning of full reponses diff--------"
-              cat "$FULL_DIFF_FILE" | head -n 10
-              echo "--------end of full reponses diff--------"
-              echo "--------beginning of distilled data diff--------"
-              cat "$DISTILLED_DIFF_FILE" | head -n 10
-              echo "--------end of distilled data diff--------"
-              printf "There's a 10-line head of the diffs printed above. The diffs can be downloaded from $CURRENT_ACTION_URL .\nIf it looks good, please set the $LABEL_NAME label on the PR."
+              print_head_of_diffs
+              printf "There's a head of the diffs printed above. The diffs can be downloaded from $CURRENT_ACTION_URL.\nIf it looks good, please set the $LABEL_NAME label on the PR."
               exit 1
             else
               echo "No diff. All good."
               exit 0
             fi
           fi
-
-
 
     # - name: log PR target
     #   run: git log remotes/origin/${{ github.base_ref }} -n 3
