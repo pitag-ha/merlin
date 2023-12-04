@@ -51,19 +51,19 @@ jobs:
   data:
     name: Generate data
     runs-on: ubuntu-22.04
+    if: >
+      github.event_name == 'pull_request' &&
+      (
+        github.event.action == 'opened' ||
+        github.event.action == 'synchronize' ||
+        github.event.action == 'reopened' ||
+        (
+          github.event.action == 'unlabeled' &&
+          github.event.label.name == 'fuzzy-diff-looks-good'
+        )
+      )
     env:
       data_dir: data
-      if: >
-        github.event_name == 'pull_request' &&
-        (
-          github.event.action == 'opened' ||
-          github.event.action == 'synchronize' ||
-          github.event.action == 'reopened' ||
-          (
-            github.event.action == 'unlabeled' &&
-            github.event.label.name == 'fuzzy-diff-looks-good'
-          )
-        )
     strategy:
       matrix:
         commit: ["merge_branch", "base_branch"]
