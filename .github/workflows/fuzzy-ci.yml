@@ -61,7 +61,7 @@ jobs:
           github.event.action == 'reopened' ||
           (
             github.event.action == 'unlabeled' &&
-            github.event.label.name == env.LABEL_NAME
+            github.event.label.name == 'fuzzy-diff-looks-good'
           )
         )
     strategy:
@@ -364,7 +364,7 @@ jobs:
     if: >
       github.event_name == 'pull_request' &&
       github.event.action == 'labeled' &&
-      github.event.label.name == env.LABEL_NAME
+      github.event.label.name == 'fuzzy-diff-looks-good'
     runs-on: ubuntu-22.04
     permissions:
       pull-requests: write
