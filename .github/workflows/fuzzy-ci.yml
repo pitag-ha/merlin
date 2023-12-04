@@ -1,11 +1,17 @@
 name: Fuzzy CI
 
 on:
-  # push:
-  #   branches: [ fuzzy-ci-artefacts-approach ]
   pull_request:
     branches: [ master ]
     types: [ opened, synchronize, reopened, unlabeled, labeled ]
+    paths-ignore:
+      - '**.md'
+      - '**.txt'
+      - '.git*'
+      - 'doc/**'
+      - 'emacs/**'
+      - 'vim/**'
+      - '**/emacs-lint.yml'
 
 env:
   # Artifact names need to be consistant across jobs:
