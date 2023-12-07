@@ -48,381 +48,403 @@ env:
   COMPILER_VERSION: ocaml-base-compiler.4.14.1
 
 jobs:
-  data:
-    name: Generate data
+  artifact-check:
+    name: Trying to download an artifact only with pull-request read permissions
+    # permissions:
+    #   pull-requests: write
     runs-on: ubuntu-22.04
-    if: >
-      github.event_name == 'pull_request' &&
-      (
-        github.event.action == 'opened' ||
-        github.event.action == 'synchronize' ||
-        github.event.action == 'reopened' ||
-        (
-          github.event.action == 'unlabeled' &&
-          github.event.label.name == 'fuzzy-diff-looks-good'
-        )
-      )
-    env:
-      data_dir: data
-    strategy:
-      matrix:
-        commit: ["merge_branch", "base_branch"]
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
-    - name: Checking out ${{ matrix.commit }}
-      env:
-        base_branch_sha: ${{ github.event.pull_request.base.sha }}
-        merge_branch_sha: ${{ github.sha }}
-      run: |
-        sha=$${{ matrix.commit }}_sha
-        echo "Check out $sha"
-        git checkout $sha
-
-    - name: Install OCaml
-      uses: ocaml/setup-ocaml@v2
-      with:
-        ocaml-compiler: ${{ env.COMPILER_VERSION }}
-        dune-cache: true
-
-    - name: Install merlin dependencies
-      run: |
-        opam pin menhirLib 20201216 --no-action
-        opam install . --deps-only --yes
-
-    - name: Install merlin
-      run: |
-        # Running `subst` to have the current commit in the data produced by `merl-an`
-        opam exec -- dune subst
-        opam exec -- dune build -p merlin-lib,dot-merlin-reader,merlin
-        opam exec -- dune install -p merlin-lib,dot-merlin-reader,merlin
-
-    - name: Pull irmin and its deps from cache if possible
-      uses: actions/cache@v2
-      id: irmin-cache
-      with:
-        path: irmin/
-        key: os${{ runner.os }}+arch${{ runner.arch }}+${{ hashFiles('fuzzy-ci-helpers/irmin.3.9.0.opam.locked') }}+${{ env.IRMIN_VERSION }}+${{ env.COMPILER_VERSION }}
-
-    - name: Download Irmin tarball
-      if: steps.irmin-cache.outputs.cache-hit != 'true'
-      run: |
-        wget https://github.com/mirage/irmin/releases/download/$IRMIN_VERSION/irmin-$IRMIN_VERSION.tbz
-
-    - name: Create irmin dir
-      if: steps.irmin-cache.outputs.cache-hit != 'true'
-      run: mkdir -p irmin
-
-    - name: Decompress Irmin tarball
-      if: steps.irmin-cache.outputs.cache-hit != 'true'
-      run: tar xvf irmin-$IRMIN_VERSION.tbz -C irmin --strip-components=1
-
-    - name: Get Irmin's lock files
-      if: steps.irmin-cache.outputs.cache-hit != 'true'
-      run: |
-        # If the lock files are updated in the PR, use the updated lock files on both branches to avoid diffs due to dependency upgrades.
-        git checkout ${{ github.sha }}
-        # (TODO: Think about if this is the right workflow. Would this work on a compiler bump? If not, delete the line above.)
-        cp .github/workflows/fuzzy-ci-helpers/irmin.3.9.0.opam.locked irmin/irmin.opam.locked
-
-    - name: Install opam monorepo
-      if: steps.irmin-cache.outputs.cache-hit != 'true'
-      run: opam install opam-monorepo --yes
-
-    - name: Pull in Irmin's dependencies
-      if: steps.irmin-cache.outputs.cache-hit != 'true'
-      run: |
-        git checkout ${{ github.sha }}
-        opam monorepo pull --lockfile=irmin.opam.locked --yes
-      working-directory: irmin
-
-    - name: Prune Irmin
-      if: steps.irmin-cache.outputs.cache-hit != 'true'
-      run: |
-        rm -r examples/ bench/
-        find test/ -mindepth 1 -maxdepth 1 -type d -not -name 'irmin-pack' -exec rm -r {} \;
-        find src/ -mindepth 1 -maxdepth 1 -type d \
-        -not -name 'irmin-pack' \
-        -not -name 'irmin' \
-        -not -name 'irmin-tezos' \
-        -not -name ppx_irmin \
-        -not -name irmin_test \
-        -not -name irmin-test \
-        -exec rm -r {} \;
-      working-directory: irmin
-
-    - name: Build Irmin
-      run: |
-        opam exec -- dune build @check
-      working-directory: irmin
-
-    - name: Pull merl-an from cache if possible
-      uses: actions/cache@v2
-      id: merl-an-cache
-      with:
-        path: /usr/local/bin/merl-an
-        key: os${{ runner.os }}+arch${{ runner.arch }}+merl-an-sha$MERL_AN_SHA
-
-    - name: Install merl-an
-      if: steps.merl-an-cache.outputs.cache-hit != 'true'
-      run: opam pin -y merl-an https://github.com/pitag-ha/merl-an.git#$MERL_AN_SHA
-
-    - name: Add merl-an to /usr/local/bin/
-      if: steps.merl-an-cache.outputs.cache-hit != 'true'
-      run: opam exec -- cp $GITHUB_WORKSPACE/_opam/bin/merl-an /usr/local/bin/merl-an
-
-    - name: Create data set of Merlin responses
-      run: |
-        opam exec -- merl-an behavior \
-        --queries=type-enclosing,occurrences,locate,complete-prefix,errors \
-        --sample-size=30 \
-        --data=${{ env.data_dir }} \
-        --merlin=ocamlmerlin \
-        --project=irmin/src/irmin,irmin/src/irmin-pack,irmin/test/irmin-pack
-
-    - name: Create name for data artifact
-      id: artifact_name
-      env:
-        base_branch_artifact_name: ${{ env.BASE_BRANCH_ARTIFACT_NAME }}
-        merge_branch_artifact_name: ${{ env. MERGE_BRANCH_ARTIFACT_NAME }}
-      run: echo "name=$${{ matrix.commit }}_artifact_name" >> $GITHUB_OUTPUT
-
-    - name: Upload data
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ steps.artifact_name.outputs.name }}
-        path: ${{ env.data_dir }}
-
-    - name: Compile diff tool
-      if: ${{ matrix.commit == 'merge_branch' }}
-      run: |
-        # Taking advantage that ocamlopt is installed on this runner: compile the diff tool here and share it with the next job where it's needed.
-        # All GH runners are hosted on x86 machines and all jobs in this workflow declare the same OS, so this should workTM.
-        opam exec -- ocamlopt -o create_diff .github/workflows/fuzzy-ci-helpers/create_diff.ml
-
-    - name: Upload diff tool
-      uses: actions/upload-artifact@v3
-      with:
-        name: diff_tool
-        path: create_diff
-
-
-
-  diff:
-    name: Generate diffs
-    runs-on: ubuntu-22.04
-    outputs:
-      diff_exits: ${{steps.full_responses_diff.outputs.diff_exists}}
-    needs: data
-    env:
-      base_data_dir: base_data
-      merge_data_dir: merge_data
-      diff_dir: diff
-    steps:
-      - name: Download base branch data
-        uses: actions/download-artifact@v3
-        with:
-          name: ${{ env.BASE_BRANCH_ARTIFACT_NAME }}
-          path: ${{ env.base_data_dir }}
-
-      - name: Download merge branch data
-        uses: actions/download-artifact@v3
-        with:
-          name: ${{ env.MERGE_BRANCH_ARTIFACT_NAME }}
-          path: ${{ env.merge_data_dir }}
-
-      - name: Create diff dir
-        run: mkdir -p "$diff_dir"
-
-      - name: Download diff tool
-        uses: actions/download-artifact@v3
-        with:
-          name: diff_tool
-
-      - name: Give diff tool execute permissions
-        run: chmod +x create_diff
-
-      - name: Generate full responses diff
-        id: full_responses_diff
+      - name: Download artifact
         run: |
-          jq -r -n \
-          --slurpfile data1 "$base_data_dir/$FULL_DATA_FILE" \
-          --slurpfile data2 "$merge_data_dir/$FULL_DATA_FILE" \
-          'def process_json($branch; $data):
-            ($branch + ": " + $data.cmd + " (id=" + ($data.sample_id | tostring) + ")"), $data;
-            range($data1|length) as $i |
-            process_json("base branch"; $data1[$i]),
-            "--input-separater--",
-            process_json("merge branch"; $data2[$i]),
-            "--diff-cmd-separator--"' \
-          | ./create_diff "--input-separater--" "--diff-cmd-separator--" "$diff_dir/$FULL_DIFF_FILE"
-          if [ -s "$diff_dir/$FULL_DIFF_FILE" ]; then
-            echo "diff_exists=true" | tee -a $GITHUB_OUTPUT
-          else
-            echo "diff_exists=false" | tee -a $GITHUB_OUTPUT
-          fi
+          curl -sSLO -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "$GH_API_ARTIFACTS/1091179282/zip" -D headers.txt
 
-      - name: Generate distilled data diff
-        # If there's no full reponses diff, there also won't be a distilled data diff
-        if: ${{ steps.full_responses_diff.outputs.diff_exists == 'true' }}
+      - name: Print headers
+        run: cat headers.txt
+
+      - name: Ls
+        run: ls -la
+
+      - name: Unzip downloaded artifact
         run: |
-          jq -r -n \
-          --slurpfile data1 "$base_data_dir/$DISTILLED_DATA_FILE" \
-          --slurpfile data2 "$merge_data_dir/$DISTILLED_DATA_FILE" \
-          'def process_json($branch; $data):
-            ($branch + ": " + $data.cmd + " (id=" + ($data.sample_id | tostring) + ")"), $data;
-            range($data1|length) as $i |
-            process_json("base branch"; $data1[$i]),
-            "--input-separater--",
-            process_json("merge branch"; $data2[$i]),
-            "--diff-cmd-separator--"' \
-          | ./create_diff "--input-separater--" "--diff-cmd-separator--" "$diff_dir/$DISTILLED_DIFF_FILE"
+          unzip zip || (echo "Download of artifact failed" && cat headers.txt && cat zip && exit 1)
 
-      - name: Upload diff(s)
-        uses: actions/upload-artifact@v3
-        with:
-          name: ${{ env.DIFF_ARTIFACT_NAME }}
-          path: ${{ env.diff_dir }}
+      - name: Ls
+        run: ls -la
+  # data:
+  #   name: Generate data
+  #   runs-on: ubuntu-22.04
+  #   if: >
+  #     github.event_name == 'pull_request' &&
+  #     (
+  #       github.event.action == 'opened' ||
+  #       github.event.action == 'synchronize' ||
+  #       github.event.action == 'reopened' ||
+  #       (
+  #         github.event.action == 'unlabeled' &&
+  #         github.event.label.name == 'fuzzy-diff-looks-good'
+  #       )
+  #     )
+  #   env:
+  #     data_dir: data
+  #   strategy:
+  #     matrix:
+  #       commit: ["merge_branch", "base_branch"]
+  #   steps:
+  #   - name: Checkout
+  #     uses: actions/checkout@v4
+  #     with:
+  #       fetch-depth: 0
+
+  #   - name: Checking out ${{ matrix.commit }}
+  #     env:
+  #       base_branch_sha: ${{ github.event.pull_request.base.sha }}
+  #       merge_branch_sha: ${{ github.sha }}
+  #     run: |
+  #       sha=$${{ matrix.commit }}_sha
+  #       echo "Check out $sha"
+  #       git checkout $sha
+
+  #   - name: Install OCaml
+  #     uses: ocaml/setup-ocaml@v2
+  #     with:
+  #       ocaml-compiler: ${{ env.COMPILER_VERSION }}
+  #       dune-cache: true
+
+  #   - name: Install merlin dependencies
+  #     run: |
+  #       opam pin menhirLib 20201216 --no-action
+  #       opam install . --deps-only --yes
+
+  #   - name: Install merlin
+  #     run: |
+  #       # Running `subst` to have the current commit in the data produced by `merl-an`
+  #       opam exec -- dune subst
+  #       opam exec -- dune build -p merlin-lib,dot-merlin-reader,merlin
+  #       opam exec -- dune install -p merlin-lib,dot-merlin-reader,merlin
+
+  #   - name: Pull irmin and its deps from cache if possible
+  #     uses: actions/cache@v2
+  #     id: irmin-cache
+  #     with:
+  #       path: irmin/
+  #       key: os${{ runner.os }}+arch${{ runner.arch }}+${{ hashFiles('fuzzy-ci-helpers/irmin.3.9.0.opam.locked') }}+${{ env.IRMIN_VERSION }}+${{ env.COMPILER_VERSION }}
+
+  #   - name: Download Irmin tarball
+  #     if: steps.irmin-cache.outputs.cache-hit != 'true'
+  #     run: |
+  #       wget https://github.com/mirage/irmin/releases/download/$IRMIN_VERSION/irmin-$IRMIN_VERSION.tbz
+
+  #   - name: Create irmin dir
+  #     if: steps.irmin-cache.outputs.cache-hit != 'true'
+  #     run: mkdir -p irmin
+
+  #   - name: Decompress Irmin tarball
+  #     if: steps.irmin-cache.outputs.cache-hit != 'true'
+  #     run: tar xvf irmin-$IRMIN_VERSION.tbz -C irmin --strip-components=1
+
+  #   - name: Get Irmin's lock files
+  #     if: steps.irmin-cache.outputs.cache-hit != 'true'
+  #     run: |
+  #       # If the lock files are updated in the PR, use the updated lock files on both branches to avoid diffs due to dependency upgrades.
+  #       git checkout ${{ github.sha }}
+  #       # (TODO: Think about if this is the right workflow. Would this work on a compiler bump? If not, delete the line above.)
+  #       cp .github/workflows/fuzzy-ci-helpers/irmin.3.9.0.opam.locked irmin/irmin.opam.locked
+
+  #   - name: Install opam monorepo
+  #     if: steps.irmin-cache.outputs.cache-hit != 'true'
+  #     run: opam install opam-monorepo --yes
+
+  #   - name: Pull in Irmin's dependencies
+  #     if: steps.irmin-cache.outputs.cache-hit != 'true'
+  #     run: |
+  #       git checkout ${{ github.sha }}
+  #       opam monorepo pull --lockfile=irmin.opam.locked --yes
+  #     working-directory: irmin
+
+  #   - name: Prune Irmin
+  #     if: steps.irmin-cache.outputs.cache-hit != 'true'
+  #     run: |
+  #       rm -r examples/ bench/
+  #       find test/ -mindepth 1 -maxdepth 1 -type d -not -name 'irmin-pack' -exec rm -r {} \;
+  #       find src/ -mindepth 1 -maxdepth 1 -type d \
+  #       -not -name 'irmin-pack' \
+  #       -not -name 'irmin' \
+  #       -not -name 'irmin-tezos' \
+  #       -not -name ppx_irmin \
+  #       -not -name irmin_test \
+  #       -not -name irmin-test \
+  #       -exec rm -r {} \;
+  #     working-directory: irmin
+
+  #   - name: Build Irmin
+  #     run: |
+  #       opam exec -- dune build @check
+  #     working-directory: irmin
+
+  #   - name: Pull merl-an from cache if possible
+  #     uses: actions/cache@v2
+  #     id: merl-an-cache
+  #     with:
+  #       path: /usr/local/bin/merl-an
+  #       key: os${{ runner.os }}+arch${{ runner.arch }}+merl-an-sha$MERL_AN_SHA
+
+  #   - name: Install merl-an
+  #     if: steps.merl-an-cache.outputs.cache-hit != 'true'
+  #     run: opam pin -y merl-an https://github.com/pitag-ha/merl-an.git#$MERL_AN_SHA
+
+  #   - name: Add merl-an to /usr/local/bin/
+  #     if: steps.merl-an-cache.outputs.cache-hit != 'true'
+  #     run: opam exec -- cp $GITHUB_WORKSPACE/_opam/bin/merl-an /usr/local/bin/merl-an
+
+  #   - name: Create data set of Merlin responses
+  #     run: |
+  #       opam exec -- merl-an behavior \
+  #       --queries=type-enclosing,occurrences,locate,complete-prefix,errors \
+  #       --sample-size=30 \
+  #       --data=${{ env.data_dir }} \
+  #       --merlin=ocamlmerlin \
+  #       --project=irmin/src/irmin,irmin/src/irmin-pack,irmin/test/irmin-pack
+
+  #   - name: Create name for data artifact
+  #     id: artifact_name
+  #     env:
+  #       base_branch_artifact_name: ${{ env.BASE_BRANCH_ARTIFACT_NAME }}
+  #       merge_branch_artifact_name: ${{ env. MERGE_BRANCH_ARTIFACT_NAME }}
+  #     run: echo "name=$${{ matrix.commit }}_artifact_name" >> $GITHUB_OUTPUT
+
+  #   - name: Upload data
+  #     uses: actions/upload-artifact@v3
+  #     with:
+  #       name: ${{ steps.artifact_name.outputs.name }}
+  #       path: ${{ env.data_dir }}
+
+  #   - name: Compile diff tool
+  #     if: ${{ matrix.commit == 'merge_branch' }}
+  #     run: |
+  #       # Taking advantage that ocamlopt is installed on this runner: compile the diff tool here and share it with the next job where it's needed.
+  #       # All GH runners are hosted on x86 machines and all jobs in this workflow declare the same OS, so this should workTM.
+  #       opam exec -- ocamlopt -o create_diff .github/workflows/fuzzy-ci-helpers/create_diff.ml
+
+  #   - name: Upload diff tool
+  #     uses: actions/upload-artifact@v3
+  #     with:
+  #       name: diff_tool
+  #       path: create_diff
 
 
 
-  output:
-    name: Evaluate diffs
-    runs-on: ubuntu-22.04
-    needs: diff
-    permissions:
-      pull-requests: write
-    env:
-      earlier_diff_was_approved: ${{ contains(github.event.pull_request.labels.*.name, 'fuzzy-diff-looks-good') }}
-      current_diff_exists: ${{ needs.diff.outputs.diff_exits }}
-      diff_dir: ${{ needs.artifact_names.outputs.diff_dir }}
-    steps:
-      - name: Download current diff(s)
-        if: ${{ env.current_diff_exists == 'true' }}
-        uses: actions/download-artifact@v3
-        with:
-          name: ${{ env.DIFF_ARTIFACT_NAME }}
+  # diff:
+  #   name: Generate diffs
+  #   runs-on: ubuntu-22.04
+  #   outputs:
+  #     diff_exits: ${{steps.full_responses_diff.outputs.diff_exists}}
+  #   needs: data
+  #   env:
+  #     base_data_dir: base_data
+  #     merge_data_dir: merge_data
+  #     diff_dir: diff
+  #   steps:
+  #     - name: Download base branch data
+  #       uses: actions/download-artifact@v3
+  #       with:
+  #         name: ${{ env.BASE_BRANCH_ARTIFACT_NAME }}
+  #         path: ${{ env.base_data_dir }}
 
-      - name: Retreive hash of approved diff
-        if: ${{ env.earlier_diff_was_approved == 'true' }}
-        env:
-          # FIXME: Avoid hard-coding the message start. Instead, factor out the msg the CI writes on the PR and take its first line.
-          msg_start: "This PR changes the response of some of the `ocamlmerlin` queries"
-        id: approved_diff_info
-        run: |
-          # FIXME: This will give a wrong result, if the PR has more than 100 comments before the last diff approval (lack of paging)
-          body=$(curl -s "$GH_API_COMMENTS?per_page=100" | jq --arg msg_start "$msg_start" 'map(select(.body | startswith($msg_start))) | max_by(.'created_by') | .body' | tee -a)
-          hash=$(echo "$body" | jq -r | grep '256-sha' | awk '{print $NF}')
-          echo "hash='$hash'" | tee -a $GITHUB_OUTPUT
+  #     - name: Download merge branch data
+  #       uses: actions/download-artifact@v3
+  #       with:
+  #         name: ${{ env.MERGE_BRANCH_ARTIFACT_NAME }}
+  #         path: ${{ env.merge_data_dir }}
 
-      - name: Return
-        env:
-          github_api_labels_url: ${{ github.event.pull_request.base.repo.url }}/issues/${{ github.event.pull_request.number }}/labels
-        run: |
-          print_head_of_diffs () {
-            echo "--------beginning of full responses diff head--------"
-            head -n 100 "$FULL_DIFF_FILE"
-            echo "--------end of full responses diff head--------"
-            echo "--------beginning of distilled data diff head--------"
-            head -n 100 "$DISTILLED_DIFF_FILE"
-            echo "--------end of distilled data diff head--------"
-          }
+  #     - name: Create diff dir
+  #       run: mkdir -p "$diff_dir"
 
-          # FIXME (?): Are nested conditionals always so ugly in Bash, or is there a better way? Option types and the possibility to match would help a lot.
-          if $earlier_diff_was_approved; then
-            echo "Earlier diff was approved."
-            current_diff_hash=$(sha256sum "$FULL_DIFF_FILE" | awk '{print $1}')
-            if [ "$current_diff_hash" == ${{ steps.approved_diff_info.outputs.hash }} ]; then
-              echo "This diff has been approved earlier. Everything ok."
-              exit 0
-            else
-              print_head_of_diffs
-              printf "The diff has changed since it was approved. So I'm removing the $LABEL_NAME label. If the new diff looks good, please set the label again.\n\
-              There's a head of the new diffs printed above. The whole diffs can be downloaded from $CURRENT_ACTION_URL.\n\
-              Previous sha256: ${{ steps.approved_diff_info.outputs.hash }}\n\
-              Current sha256: $current_diff_hash"
-              status=$(curl -sL -w "%{http_code}" -o output.txt -X DELETE -H "Authorization: Bearer $TOKEN" "$GH_API_LABELS/$LABEL_NAME")
-            fi
-          else
-            if $current_diff_exists; then
-              print_head_of_diffs
-              printf "There's a head of the diffs printed above. The diffs can be downloaded from $CURRENT_ACTION_URL.\nIf it looks good, please set the $LABEL_NAME label on the PR."
-              exit 1
-            else
-              echo "No diff. All good."
-              exit 0
-            fi
-          fi
+  #     - name: Download diff tool
+  #       uses: actions/download-artifact@v3
+  #       with:
+  #         name: diff_tool
+
+  #     - name: Give diff tool execute permissions
+  #       run: chmod +x create_diff
+
+  #     - name: Generate full responses diff
+  #       id: full_responses_diff
+  #       run: |
+  #         jq -r -n \
+  #         --slurpfile data1 "$base_data_dir/$FULL_DATA_FILE" \
+  #         --slurpfile data2 "$merge_data_dir/$FULL_DATA_FILE" \
+  #         'def process_json($branch; $data):
+  #           ($branch + ": " + $data.cmd + " (id=" + ($data.sample_id | tostring) + ")"), $data;
+  #           range($data1|length) as $i |
+  #           process_json("base branch"; $data1[$i]),
+  #           "--input-separater--",
+  #           process_json("merge branch"; $data2[$i]),
+  #           "--diff-cmd-separator--"' \
+  #         | ./create_diff "--input-separater--" "--diff-cmd-separator--" "$diff_dir/$FULL_DIFF_FILE"
+  #         if [ -s "$diff_dir/$FULL_DIFF_FILE" ]; then
+  #           echo "diff_exists=true" | tee -a $GITHUB_OUTPUT
+  #         else
+  #           echo "diff_exists=false" | tee -a $GITHUB_OUTPUT
+  #         fi
+
+  #     - name: Generate distilled data diff
+  #       # If there's no full reponses diff, there also won't be a distilled data diff
+  #       if: ${{ steps.full_responses_diff.outputs.diff_exists == 'true' }}
+  #       run: |
+  #         jq -r -n \
+  #         --slurpfile data1 "$base_data_dir/$DISTILLED_DATA_FILE" \
+  #         --slurpfile data2 "$merge_data_dir/$DISTILLED_DATA_FILE" \
+  #         'def process_json($branch; $data):
+  #           ($branch + ": " + $data.cmd + " (id=" + ($data.sample_id | tostring) + ")"), $data;
+  #           range($data1|length) as $i |
+  #           process_json("base branch"; $data1[$i]),
+  #           "--input-separater--",
+  #           process_json("merge branch"; $data2[$i]),
+  #           "--diff-cmd-separator--"' \
+  #         | ./create_diff "--input-separater--" "--diff-cmd-separator--" "$diff_dir/$DISTILLED_DIFF_FILE"
+
+  #     - name: Upload diff(s)
+  #       uses: actions/upload-artifact@v3
+  #       with:
+  #         name: ${{ env.DIFF_ARTIFACT_NAME }}
+  #         path: ${{ env.diff_dir }}
 
 
 
-  approve:
-    name: Approve diff
-    if: >
-      github.event_name == 'pull_request' &&
-      github.event.action == 'labeled' &&
-      github.event.label.name == 'fuzzy-diff-looks-good'
-    runs-on: ubuntu-22.04
-    permissions:
-      pull-requests: write
-    steps:
-      - name: Retreive diff artifact meta-data
-        id: diff_metadata
-        run: |
-          all_artifacts=$(curl -sSL  "$GH_API_ARTIFACTS")
-          diff_artifact=$(echo "$all_artifacts" | jq "first(.artifacts[] | select(.name == \"$DIFF_ARTIFACT_NAME\")  )")
-          id=$(echo "$diff_artifact" | jq ".id")
-          echo "id=$id" | tee -a $GITHUB_OUTPUT
-          workflow_run=$(echo "$diff_artifact" | jq ".workflow_run | .id")
-          echo "workflow_run=$workflow_run" | tee -a $GITHUB_OUTPUT
+  # output:
+  #   name: Evaluate diffs
+  #   runs-on: ubuntu-22.04
+  #   needs: diff
+  #   permissions:
+  #     pull-requests: write
+  #   env:
+  #     earlier_diff_was_approved: ${{ contains(github.event.pull_request.labels.*.name, 'fuzzy-diff-looks-good') }}
+  #     current_diff_exists: ${{ needs.diff.outputs.diff_exits }}
+  #     diff_dir: ${{ needs.artifact_names.outputs.diff_dir }}
+  #   steps:
+  #     - name: Download current diff(s)
+  #       if: ${{ env.current_diff_exists == 'true' }}
+  #       uses: actions/download-artifact@v3
+  #       with:
+  #         name: ${{ env.DIFF_ARTIFACT_NAME }}
 
-      - name: Check if diff exists
-        env:
-          id: ${{ steps.diff_metadata.outputs.id }}
-        run: |
-          # FIXME (?)
-          if [ -z $id ]; then
-            printf "You seem to have tried to approve a diff that doesn't exist yet.\nWait for the diff to have been generated and then try again."
-            status=$(curl -sL -w "%{http_code}" -o output.txt -X DELETE -H "Authorization: Bearer $TOKEN" "$GH_API_LABELS/$LABEL_NAME")
-            exit 1
-          else
-            echo "Diff has been approved."
-          fi
+  #     - name: Retreive hash of approved diff
+  #       if: ${{ env.earlier_diff_was_approved == 'true' }}
+  #       env:
+  #         # FIXME: Avoid hard-coding the message start. Instead, factor out the msg the CI writes on the PR and take its first line.
+  #         msg_start: "This PR changes the response of some of the `ocamlmerlin` queries"
+  #       id: approved_diff_info
+  #       run: |
+  #         # FIXME: This will give a wrong result, if the PR has more than 100 comments before the last diff approval (lack of paging)
+  #         body=$(curl -s "$GH_API_COMMENTS?per_page=100" | jq --arg msg_start "$msg_start" 'map(select(.body | startswith($msg_start))) | max_by(.'created_by') | .body' | tee -a)
+  #         hash=$(echo "$body" | jq -r | grep '256-sha' | awk '{print $NF}')
+  #         echo "hash='$hash'" | tee -a $GITHUB_OUTPUT
 
-      - name: Download diff
-        env:
-          id: ${{ steps.diff_metadata.outputs.id }}
-        run: |
-         # Doing this manually, since actions/download-artifact only works on the same workflow run on which the artifact was uploaded
-         curl -sSLO -H "Authorization: Bearer $TOKEN" "$GH_API_ARTIFACTS/$id/zip" -D headers.txt
+  #     - name: Return
+  #       env:
+  #         github_api_labels_url: ${{ github.event.pull_request.base.repo.url }}/issues/${{ github.event.pull_request.number }}/labels
+  #       run: |
+  #         print_head_of_diffs () {
+  #           echo "--------beginning of full responses diff head--------"
+  #           head -n 100 "$FULL_DIFF_FILE"
+  #           echo "--------end of full responses diff head--------"
+  #           echo "--------beginning of distilled data diff head--------"
+  #           head -n 100 "$DISTILLED_DIFF_FILE"
+  #           echo "--------end of distilled data diff head--------"
+  #         }
 
-      - name: Unzip downloaded diff
-        run: |
-          unzip zip || (echo "Download of diff artifact failed" && cat headers.txt && cat zip && exit 1)
+  #         # FIXME (?): Are nested conditionals always so ugly in Bash, or is there a better way? Option types and the possibility to match would help a lot.
+  #         if $earlier_diff_was_approved; then
+  #           echo "Earlier diff was approved."
+  #           current_diff_hash=$(sha256sum "$FULL_DIFF_FILE" | awk '{print $1}')
+  #           if [ "$current_diff_hash" == ${{ steps.approved_diff_info.outputs.hash }} ]; then
+  #             echo "This diff has been approved earlier. Everything ok."
+  #             exit 0
+  #           else
+  #             print_head_of_diffs
+  #             printf "The diff has changed since it was approved. So I'm removing the $LABEL_NAME label. If the new diff looks good, please set the label again.\n\
+  #             There's a head of the new diffs printed above. The whole diffs can be downloaded from $CURRENT_ACTION_URL.\n\
+  #             Previous sha256: ${{ steps.approved_diff_info.outputs.hash }}\n\
+  #             Current sha256: $current_diff_hash"
+  #             status=$(curl -sL -w "%{http_code}" -o output.txt -X DELETE -H "Authorization: Bearer $TOKEN" "$GH_API_LABELS/$LABEL_NAME")
+  #           fi
+  #         else
+  #           if $current_diff_exists; then
+  #             print_head_of_diffs
+  #             printf "There's a head of the diffs printed above. The diffs can be downloaded from $CURRENT_ACTION_URL.\nIf it looks good, please set the $LABEL_NAME label on the PR."
+  #             exit 1
+  #           else
+  #             echo "No diff. All good."
+  #             exit 0
+  #           fi
+  #         fi
 
-      - name: Compute full responses diff hash
-        id: diff_hash
-        run: |
-          hash=$(sha256sum "$FULL_DIFF_FILE" | awk '{print $1}')
-          echo "hash=$hash" | tee -a $GITHUB_OUTPUT
 
-      - name: Write HTTP body to file
-        env:
-          approved_diffs_workflow_run: ${{ steps.diff_metadata.outputs.workflow_run }}
-          approved_diffs_hash: ${{ steps.diff_hash.outputs.hash }}
-        run: |
-          msg=$( cat <<EOF
-          This PR changes the response of some of the `ocamlmerlin` queries, that were run and analyzed by the [Merlin Fuzzy CI](https://github.com/ocaml/merlin/wiki/Merlin-Fuzzy-CI). The change is not considered a regression, the analyzis of this PR has been approved in its following state:
-          - URL to download the generated data sets and their diffs between PR base branch and merge branch (at the moment of approval): $ACTIONS_RUNS_ENDPOINT/$approved_diffs_workflow_run
-          - 256-sha of full reponses diff: $approved_diffs_hash
-          EOF
-          )
-          jq -n --arg msg "$msg" '{ body: $msg }' | tee -a body.json
 
-      - name: Write comment on PR
-        run: |
-          curl -LsX POST -H "Authorization: Bearer $TOKEN" -d @body.json "$GH_API_COMMENTS"
-          echo $?
+  # approve:
+  #   name: Approve diff
+  #   if: >
+  #     github.event_name == 'pull_request' &&
+  #     github.event.action == 'labeled' &&
+  #     github.event.label.name == 'fuzzy-diff-looks-good'
+  #   runs-on: ubuntu-22.04
+  #   permissions:
+  #     pull-requests: write
+  #   steps:
+  #     - name: Retreive diff artifact meta-data
+  #       id: diff_metadata
+  #       run: |
+  #         all_artifacts=$(curl -sSL  "$GH_API_ARTIFACTS")
+  #         diff_artifact=$(echo "$all_artifacts" | jq "first(.artifacts[] | select(.name == \"$DIFF_ARTIFACT_NAME\")  )")
+  #         id=$(echo "$diff_artifact" | jq ".id")
+  #         echo "id=$id" | tee -a $GITHUB_OUTPUT
+  #         workflow_run=$(echo "$diff_artifact" | jq ".workflow_run | .id")
+  #         echo "workflow_run=$workflow_run" | tee -a $GITHUB_OUTPUT
+
+  #     - name: Check if diff exists
+  #       env:
+  #         id: ${{ steps.diff_metadata.outputs.id }}
+  #       run: |
+  #         # FIXME (?)
+  #         if [ -z $id ]; then
+  #           printf "You seem to have tried to approve a diff that doesn't exist yet.\nWait for the diff to have been generated and then try again."
+  #           status=$(curl -sL -w "%{http_code}" -o output.txt -X DELETE -H "Authorization: Bearer $TOKEN" "$GH_API_LABELS/$LABEL_NAME")
+  #           exit 1
+  #         else
+  #           echo "Diff has been approved."
+  #         fi
+
+  #     - name: Download diff
+  #       env:
+  #         id: ${{ steps.diff_metadata.outputs.id }}
+  #       run: |
+  #        # Doing this manually, since actions/download-artifact only works on the same workflow run on which the artifact was uploaded
+  #        curl -sSLO -H "Authorization: Bearer $TOKEN" "$GH_API_ARTIFACTS/$id/zip" -D headers.txt
+
+  #     - name: Unzip downloaded diff
+  #       run: |
+  #         unzip zip || (echo "Download of diff artifact failed" && cat headers.txt && cat zip && exit 1)
+
+  #     - name: Compute full responses diff hash
+  #       id: diff_hash
+  #       run: |
+  #         hash=$(sha256sum "$FULL_DIFF_FILE" | awk '{print $1}')
+  #         echo "hash=$hash" | tee -a $GITHUB_OUTPUT
+
+  #     - name: Write HTTP body to file
+  #       env:
+  #         approved_diffs_workflow_run: ${{ steps.diff_metadata.outputs.workflow_run }}
+  #         approved_diffs_hash: ${{ steps.diff_hash.outputs.hash }}
+  #       run: |
+  #         msg=$( cat <<EOF
+  #         This PR changes the response of some of the `ocamlmerlin` queries, that were run and analyzed by the [Merlin Fuzzy CI](https://github.com/ocaml/merlin/wiki/Merlin-Fuzzy-CI). The change is not considered a regression, the analyzis of this PR has been approved in its following state:
+  #         - URL to download the generated data sets and their diffs between PR base branch and merge branch (at the moment of approval): $ACTIONS_RUNS_ENDPOINT/$approved_diffs_workflow_run
+  #         - 256-sha of full reponses diff: $approved_diffs_hash
+  #         EOF
+  #         )
+  #         jq -n --arg msg "$msg" '{ body: $msg }' | tee -a body.json
+
+  #     - name: Write comment on PR
+  #       run: |
+  #         curl -LsX POST -H "Authorization: Bearer $TOKEN" -d @body.json "$GH_API_COMMENTS"
+  #         echo $?
