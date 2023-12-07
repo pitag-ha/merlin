@@ -33,7 +33,7 @@ env:
   GH_API_COMMENTS: ${{ github.event.pull_request.comments_url }}
   GH_API_LABELS: ${{ github.event.pull_request.issue_url }}/labels
   GH_API_ARTIFACTS: ${{ github.event.pull_request.base.repo.url }}/actions/artifacts
-  TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  TOKEN: ${{ secrets.MERLINOIS_PAT }}
 
   # URL short-hands
   ACTIONS_RUNS_ENDPOINT: ${{ github.event.repository.html_url }}/actions/runs
@@ -47,29 +47,40 @@ env:
   # The compiler version used on master. It also needs to form part of Irmin's build cache key. Bump this on other branches and whenever the compiler version on master is bumped.
   COMPILER_VERSION: ocaml-base-compiler.4.14.1
 
+
 jobs:
-  artifact-check:
-    name: Trying to download an artifact only with pull-request read permissions
-    # permissions:
-    #   pull-requests: write
+  write-comment:
+    name: Try writing a comment on the PR using a PAT
     runs-on: ubuntu-22.04
     steps:
-      - name: Download artifact
+      - name: Debug if TOKEN exists
         run: |
-          curl -sSLO -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "$GH_API_ARTIFACTS/1091179282/zip" -D headers.txt
+          if [ -z $TOKEN ]; then
+            echo "TOKEN is empty"
+          else
+            echo "TOKEN exists."
+          fi
 
-      - name: Print headers
-        run: cat headers.txt
-
-      - name: Ls
-        run: ls -la
-
-      - name: Unzip downloaded artifact
+      - name: Debug if secret exists
         run: |
-          unzip zip || (echo "Download of artifact failed" && cat headers.txt && cat zip && exit 1)
+          if [ -z  ${{ secrets.MERLINOIS_PAT }} ]; then
+            echo "secret is empty"
+          else
+            echo "secret exists."
+          fi
 
-      - name: Ls
-        run: ls -la
+      - name: Write HTTP body to file
+        run: |
+          msg=$( cat <<EOF
+          Hello :)
+          EOF
+          )
+          jq -n --arg msg "$msg" '{ body: $msg }' | tee -a body.json
+
+      - name: Write comment on PR
+        run: |
+          curl -LsX POST -H "Authorization: Bearer $TOKEN" -d @body.json "$GH_API_COMMENTS"
+          echo $?
   # data:
   #   name: Generate data
   #   runs-on: ubuntu-22.04
