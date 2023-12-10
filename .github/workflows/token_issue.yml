@@ -1,15 +1,15 @@
-name: Token issue debugging
+# name: Token issue debugging
 
-on:
-  pull_request:
-    branches: [ master ]
+# on:
+#   pull_request:
+#     branches: [ master ]
 
-jobs:
-  debugging:
-    runs-on: ubuntu-latest
-    permissions: write-all
-    steps:
-    - name: Write a comment on a PR
-      run: |
-        curl -LsX POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -d '{"body":"Hello :)"}' "${{ github.event.pull_request.comments_url }}"
-        echo $?
+# jobs:
+#   debugging:
+#     runs-on: ubuntu-latest
+#     permissions: write-all
+#     steps:
+#     - name: Write a comment on a PR
+#       run: |
+#         curl -LsX POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -d '{"body":"Hello :)"}' "${{ github.event.pull_request.comments_url }}"
+#         echo $?

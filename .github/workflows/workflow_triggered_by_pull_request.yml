@@ -1,0 +1,25 @@
+name: Foo
+
+on:
+  pull_request:
+    branches: [ master ]
+
+env:
+  GH_API_LABELS: ${{ github.event.pull_request.issue_url }}/labels
+  LABEL_NAME: fuzzy-diff-looks-good
+
+jobs:
+  share_instruction:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Forward instruction to delete the label to privileged workflow
+        run: |
+          mkdir -p ./forward
+          jq -n \
+            --arg instruction "delete_label" \
+            --arg url "$GH_API_LABELS/$LABEL_NAME" \
+            '{instruction: $instruction, url: $url}' > ./forward/instruction.json
+      - uses: actions/upload-artifact@v2
+        with:
+          name: forwarded_instructions
+          path: forward/
