@@ -1,0 +1,24 @@
+name: Execute privileged instructions`
+
+on:
+  workflow_run:
+    workflows: ["Foo"]
+    types:
+      - completed
+
+jobs:
+  execute-instruction:
+    runs-on: ubuntu-latest
+    # permissions: write-all
+    steps:
+      - name: Download artifact
+        run: |
+          all_artifacts=$(curl -sSL  "$GH_API_ARTIFACTS")
+          forward_artifact=$(echo $all_artifacts | jq '.artifacts[] | select(.workflow_run.id == ${{ github.event.workflow_run.id }} and .name == "forwarded_instructions")')
+          id=$(echo $forward_artifact | jq -r '.id')
+          curl -sSLO -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "$GH_API_ARTIFACTS/$id/zip" -D headers.txt
+
+      - name: Unzip artifact
+        run: |
+          unzip -q forward.zip -d forward
+          cat forward/instruction.json
