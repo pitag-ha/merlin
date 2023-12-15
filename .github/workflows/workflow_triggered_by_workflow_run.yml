@@ -28,5 +28,5 @@ jobs:
           ls -la
       - name: Unzip artifact
         run: |
-          unzip -q forward.zip -d forward
+          unzip -q zip -d forward
           cat forward/instruction.json
