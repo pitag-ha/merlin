@@ -29,4 +29,6 @@ jobs:
       - name: Unzip artifact
         run: |
           unzip -q zip -d forward || echo zip
+      - name: Cat the artifact content
+        run: |
           cat forward/instruction.json
