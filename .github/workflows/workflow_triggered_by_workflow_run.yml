@@ -23,7 +23,9 @@ jobs:
           forward_artifact=$(echo $all_artifacts | jq '.artifacts[] | select(.workflow_run.id == ${{ github.event.workflow_run.id }} and .name == "forwarded_instructions")')
           id=$(echo $forward_artifact | jq -r '.id')
           curl -sSLO -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "$GH_API_ARTIFACTS/$id/zip" -D headers.txt
-
+      - name: Ls
+        run: |
+          ls -la
       - name: Unzip artifact
         run: |
           unzip -q forward.zip -d forward
