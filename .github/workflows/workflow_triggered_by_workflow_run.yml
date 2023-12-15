@@ -16,7 +16,7 @@ jobs:
     steps:
       - name: Print pull_request context
         run: |
-          echo ${{ toJson(github.event.workflow_run) }}
+          echo "${{ toJson(github.event.workflow_run) }}"
       - name: Download artifact
         run: |
           all_artifacts=$(curl -sSL  "$GH_API_ARTIFACTS")
