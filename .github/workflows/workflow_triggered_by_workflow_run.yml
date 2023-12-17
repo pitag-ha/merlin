@@ -38,6 +38,12 @@ jobs:
           all_artifacts=$(curl -sSL  "$GH_API_ARTIFACTS")
           forward_artifact=$(echo $all_artifacts | jq '.artifacts[] | select(.workflow_run.id == ${{ github.event.workflow_run.id }} and .name == "forwarded_instructions")')
           echo $forward_artifact | jq -r '.id'
+      - name: endpoint
+        run: |
+          all_artifacts=$(curl -sSL  "$GH_API_ARTIFACTS")
+          forward_artifact=$(echo $all_artifacts | jq '.artifacts[] | select(.workflow_run.id == ${{ github.event.workflow_run.id }} and .name == "forwarded_instructions")')
+          id=$(echo $forward_artifact | jq -r '.id')
+          echo "$GH_API_ARTIFACTS/$id/zip"
       - name: Ls
         run: |
           ls -la
