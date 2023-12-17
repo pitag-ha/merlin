@@ -6,7 +6,12 @@ on:
 
 env:
   GH_API_LABELS: ${{ github.event.pull_request.issue_url }}/labels
-  LABEL_NAME: fuzzy-diff-looks-good
+
+
+
+  # DOWNLOAD_URL = $ACTIONS_RUNS_ENDPOINT/$approved_diffs_workflow_run
+  # HASH=$approved_diffs_hash
+
 
 jobs:
   share_instruction:
@@ -17,8 +22,8 @@ jobs:
           mkdir -p ./forward
           jq -n \
             --arg instruction "delete_label" \
-            --arg url "$GH_API_LABELS/$LABEL_NAME" \
-            '{instruction: $instruction, url: $url}' > ./forward/instruction.json
+            --arg endpoint "$GH_API_LABELS" \
+            '{instruction: $instruction, endpoint: $endpoint}' > ./forward/instruction.json
       - uses: actions/upload-artifact@v2
         with:
           name: forwarded_instructions
