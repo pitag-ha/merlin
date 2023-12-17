@@ -31,7 +31,7 @@ jobs:
           endpoint=$(jq '.endpoint' forward/instruction.json)
           echo "endpoint=$endpoint" | tee -a $GITHUB_OUTPUT
       - name: Delete the label
-        if: steps.instruction.outputs.instruction == 'delete_label'
+        if: ${{ steps.instruction.outputs.instruction == 'delete_label' }}
         run: |
           LABEL_NAME=$(cat .github/workflows/fuzzy-ci-helpers/label_name.txt)
           curl -sL -w "%{http_code}" -o output.txt -X DELETE -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "${{ steps.instruction.outputs.endpoint }}/$LABEL_NAME"
