@@ -30,6 +30,8 @@ jobs:
           echo "instruction=$instruction" | tee -a $GITHUB_OUTPUT
           endpoint=$(jq -r '.endpoint' forward/instruction.json)
           echo "endpoint=$endpoint" | tee -a $GITHUB_OUTPUT
+      - name: Checkout
+        uses: actions/checkout@v4
       - name: Delete the label
         if: ${{ steps.instruction.outputs.instruction == 'delete_label' }}
         run: |
