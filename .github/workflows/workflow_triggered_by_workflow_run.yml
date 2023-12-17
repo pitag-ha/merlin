@@ -14,42 +14,24 @@ jobs:
     runs-on: ubuntu-latest
     permissions: write-all
     steps:
-      - name: Print pull_request context
-        run: |
-          echo "${{ toJson(github.event.workflow_run) }}"
-      - name: all_artifacts
-        run: |
-          curl -sSL  "$GH_API_ACTIONS/runs/${{ github.event.workflow_run.id }}/artifacts"
-      - name: Filtered artifacts
-        run: |
-          all_artifacts=$(curl -sSL  "$GH_API_ACTIONS/runs/${{ github.event.workflow_run.id }}/artifacts")
-          echo $all_artifacts | jq '.artifacts[] | select(.workflow_run.id == ${{ github.event.workflow_run.id }} and .name == "forwarded_instructions")'
-      - name: id
-        run: |
-          all_artifacts=$(curl -sSL  "$GH_API_ACTIONS/runs/${{ github.event.workflow_run.id }}/artifacts")
-          forward_artifact=$(echo $all_artifacts | jq '.artifacts[] | select(.workflow_run.id == ${{ github.event.workflow_run.id }} and .name == "forwarded_instructions")')
-          echo $forward_artifact | jq -r '.id'
-      - name: endpoint
-        run: |
-          all_artifacts=$(curl -sSL  "$GH_API_ACTIONS/runs/${{ github.event.workflow_run.id }}/artifacts")
-          forward_artifact=$(echo $all_artifacts | jq '.artifacts[] | select(.workflow_run.id == ${{ github.event.workflow_run.id }} and .name == "forwarded_instructions")')
-          id=$(echo $forward_artifact | jq -r '.id')
-          echo "$GH_API_ACTIONS/artifacts/$id/zip"
-      - name: Download artifact
+      - name: Download instruction artifact
         run: |
           all_artifacts=$(curl -sSL  "$GH_API_ACTIONS/runs/${{ github.event.workflow_run.id }}/artifacts")
           forward_artifact=$(echo $all_artifacts | jq '.artifacts[] | select(.workflow_run.id == ${{ github.event.workflow_run.id }} and .name == "forwarded_instructions")')
           id=$(echo $forward_artifact | jq -r '.id')
           curl -sSLO -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "$GH_API_ACTIONS/artifacts/$id/zip" -D headers.txt
-      - name: Print headers
-        run: |
-          cat headers.txt
-      - name: Ls
-        run: |
-          ls -la
       - name: Unzip artifact
         run: |
-          unzip -q zip -d forward || cat zip
-      - name: Cat the artifact content
+          unzip -q zip -d forward || (cat zip && cat headers.txt)
+      - name: Retreive instruction contents
+        id: instruction
         run: |
-          cat forward/instruction.json
+          echo "instruction=$(jq '.instruction' forward/instruction.json) | tee -a $GITHUB_OUTPUT
+          echo "endpoint=$(jq '.endpoint' forward/instruction.json) | tee -a $GITHUB_OUTPUT
+      - name: Delete the label
+        if: steps.instruction.outputs.instruction == 'delete_label'
+        run: |
+          LABEL_NAME=$(cat .github/workflows/fuzzy-ci-helpers/label_name.txt)
+          curl -sL -w "%{http_code}" -o output.txt -X DELETE -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "${{ steps.instruction.outputs.endpoint }}/$LABEL_NAME"
+      - name: Print http code
+        run: cat output.txt
