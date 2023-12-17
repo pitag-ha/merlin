@@ -12,7 +12,7 @@ on:
 jobs:
   execute-instruction:
     runs-on: ubuntu-latest
-    # permissions: write-all
+    permissions: write-all
     steps:
       - name: Print pull_request context
         run: |
