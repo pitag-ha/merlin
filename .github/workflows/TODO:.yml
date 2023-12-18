@@ -1,0 +1,36 @@
+TODO:
+
+- Prepare Ppxlib meeting
+- Check if things still work after the env refactor (CHECK_MARK)
+- Fix PR comment (CHECK_MARK)
+- Fix a few things in `merl-an`:
+     - Put a place-holder into the output, if `query_num` doesn't exist instead of raising (CHECK_MARK)
+     - Call the outputted data `distilled_data` (CHECK_MARK)
+     - Add commands to data json (CHECK_MARK)
+- Fix the diff name: Needs to contain the sha's.
+- Generate real data
+     - Build and install Merlin
+     - Install `merl-an` (CHECK_MARK)
+     - First step: Run `merl-an` on Merlin code base itself. Make it work!
+     - Clone and build Irmin
+- Increase the diff context so that the command appears on the diff
+- Fix the action run conditions (check out what's done on the other Merlin CIs)
+- Write a PR comment
+
+
+
+
+PR comment:
+
+This adds a CI which checks Merlin PRs for changes in the Merlin reponse. It does so by running `ocamlmerlin` on random input samples (on the Irmin code base) on both the PR's target branch and the source branch and checking if there's a difference. If there's a difference, it uploads the diff as a github action artifact.
+
+If there's no diff, the CI passes. If there's a diff, it should be reviewed and can be approved by setting a PR flag that should be called `fuzzy-diff-looks-good` (or we can change that name). When that flag is being set, the CI writes a PR message containing the state of the PR who's diff has been approved. From then on, on PR updates, the CI will pass if and only if the diff hasn't changed.
+
+It also distills the full Merlin responses down into two simple categories: 1. What kind of response does Merlin give (return or failure or error etc.)? 2. Has the Merlin server crashed since the last query? Whenever the change in Merlin responses is invasive enough to be captured by that distillation, that should make the diff review easier.
+
+Note: There are still a few details left that I need to fix, but the PR is already ready for review. The details:
+- With the current implementation, the CI takes about (...) min to run. We've mentioned that we want it to be below (...) to avoid exceeding the current longest CI (i.e. the windows CI, which takes (...)). To reach that, I'm planning to have the CI cache the built Irmin code base similarly to how it caches the `merl-an` binary.
+     - Add a CI cache both for the `merl-an` binary and for the built Irmin code base
+- Improve `merl-an` so that the data can easily be generated on a bigger sample set
+     - `merl-an`'s` argument `--project` should allow a list of dirs, so that we can pass in all of `irmin/src/irmin/`, `irmin/src/irmin` and `irmin/test/irmin-pack`. Currently it's just `irmin/src/irmin/`.
+- Fix `merl-an` to work on `mli`-files
