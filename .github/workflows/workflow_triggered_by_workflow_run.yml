@@ -13,6 +13,8 @@ jobs:
   execute-instruction:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
       - name: Download instruction artifact
         run: |
           all_artifacts=$(curl -sSL  "$GH_API_ACTIONS/runs/${{ github.event.workflow_run.id }}/artifacts")
@@ -27,8 +29,6 @@ jobs:
         run: |
           instruction=$(jq -r '.instruction' forward/instruction.json)
           echo "instruction=$instruction" | tee -a $GITHUB_OUTPUT
-      - name: Checkout
-        uses: actions/checkout@v4
       - name: Delete the label
         if: ${{ steps.instruction.outputs.instruction == 'delete_label' }}
         run: |
