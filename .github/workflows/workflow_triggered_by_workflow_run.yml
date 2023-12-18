@@ -12,7 +12,6 @@ on:
 jobs:
   execute-instruction:
     runs-on: ubuntu-latest
-    permissions: write-all
     steps:
       - name: Download instruction artifact
         run: |
@@ -28,14 +27,20 @@ jobs:
         run: |
           instruction=$(jq -r '.instruction' forward/instruction.json)
           echo "instruction=$instruction" | tee -a $GITHUB_OUTPUT
-          endpoint=$(jq -r '.endpoint' forward/instruction.json)
-          echo "endpoint=$endpoint" | tee -a $GITHUB_OUTPUT
       - name: Checkout
         uses: actions/checkout@v4
       - name: Delete the label
         if: ${{ steps.instruction.outputs.instruction == 'delete_label' }}
         run: |
+          ENDPOINT=$(jq -r '.endpoint' forward/instruction.json)
           LABEL_NAME=$(cat .github/workflows/fuzzy-ci-helpers/label_name.txt)
-          curl -sL -w "%{http_code}" -o output.txt -X DELETE -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "${{ steps.instruction.outputs.endpoint }}/$LABEL_NAME"
-      - name: Print http code
-        run: cat output.txt
+          curl -sL -w "%{http_code}" -o output.txt -X DELETE -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "$ENDPOINT/$LABEL_NAME"
+      - name: Comment on PR
+        if: ${{ steps.instruction.outputs.instruction == 'comment' }}
+        run: |
+          export ARTIFACTS_URL=$(jq -r '.artifacts_url' forward/instruction.json)
+          export HASH=$(jq -r '.hash' forward/instruction.json)
+          msg=$(cat .github/workflows/fuzzy-ci-helpers/msg.txt | tr '\n' ' ' | tr '|' '\n' | envsubst)
+          jq -n --arg msg "$msg" '{ body: $msg }' | tee -a body.json
+          ENDPOINT=$(jq -r '.endpoint' forward/instruction.json)
+          curl -LsX POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -d @body.json "$ENDPOINT"
