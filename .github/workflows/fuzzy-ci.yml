@@ -12,6 +12,9 @@ on:
       - 'emacs/**'
       - 'vim/**'
       - '**/emacs-lint.yml'
+      - 'bench/**'
+      - 'upstream/**'
+      - 'tests/**'
 
 env:
   # Artifact names need to be consistent across jobs:
@@ -48,15 +51,12 @@ jobs:
     name: Generate data
     runs-on: ubuntu-22.04
     if: >
-      github.event_name == 'pull_request' &&
+      github.event.action == 'opened' ||
+      github.event.action == 'synchronize' ||
+      github.event.action == 'reopened' ||
       (
-        github.event.action == 'opened' ||
-        github.event.action == 'synchronize' ||
-        github.event.action == 'reopened' ||
-        (
-          github.event.action == 'unlabeled' &&
-          github.event.label.name == 'fuzzy-diff-looks-good'
-        )
+        github.event.action == 'unlabeled' &&
+        github.event.label.name == 'fuzzy-diff-looks-good'
       )
     env:
       data_dir: data
@@ -169,6 +169,10 @@ jobs:
 
     - name: Create data set of Merlin responses
       run: |
+        # Note: The parameters with most influence on the execution time are
+        # `--sample-size`: Number of samples per file defined by `--project` (and per local query).
+        # `--project`: List of dirs/files to create samples on. In the case of a dirs, all ml(i) files recursively in the dir are used.
+        # `--queries`: The `ocamlmerlin` queries that are being run.
         opam exec -- merl-an behavior \
         --queries=type-enclosing,occurrences,locate,complete-prefix,errors \
         --sample-size=30 \
