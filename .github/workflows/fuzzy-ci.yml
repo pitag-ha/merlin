@@ -14,7 +14,7 @@ on:
       - '**/emacs-lint.yml'
 
 env:
-  # Artifact names need to be consistant across jobs:
+  # Artifact names need to be consistent across jobs:
   BASE_BRANCH_ARTIFACT_NAME: base-branch-data-${{ github.event.pull_request.base.sha }}-pr${{ github.event.pull_request.number }}
   MERGE_BRANCH_ARTIFACT_NAME: merge-branch-data-${{ github.event.pull_request.base.sha }}-${{ github.event.pull_request.head.sha }}-pr${{ github.event.pull_request.number }}
   DIFF_ARTIFACT_NAME: diff-${{ github.event.pull_request.base.sha }}-${{ github.event.pull_request.head.sha }}
