@@ -1,0 +1,15 @@
+name: ocaml-setup with dune cache
+
+on:
+  push:
+    branches: [ dune-cache-of-ocaml-setup-action ]
+
+jobs:
+  setup-ocaml:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up OCaml ${{ matrix.ocaml-compiler }}
+        uses: ocaml/setup-ocaml@v2
+        with:
+          ocaml-compiler: 4.14.1
+          dune-cache: true
