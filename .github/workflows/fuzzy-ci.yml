@@ -260,10 +260,10 @@ jobs:
             ($branch + ": " + $data.cmd + " (id=" + ($data.sample_id | tostring) + ")"), $data;
             range($data1|length) as $i |
             process_json("base branch"; $data1[$i]),
-            "--input-separater--",
+            "--input-separator--",
             process_json("merge branch"; $data2[$i]),
             "--diff-cmd-separator--"' \
-          | ./create_diff "--input-separater--" "--diff-cmd-separator--" "$diff_dir/$FULL_DIFF_FILE"
+          | ./create_diff "--input-separator--" "--diff-cmd-separator--" "$diff_dir/$FULL_DIFF_FILE"
           if [ -s "$diff_dir/$FULL_DIFF_FILE" ]; then
             echo "diff_exists=true" | tee -a $GITHUB_OUTPUT
           else
@@ -281,10 +281,10 @@ jobs:
             ($branch + ": " + $data.cmd + " (id=" + ($data.sample_id | tostring) + ")"), $data;
             range($data1|length) as $i |
             process_json("base branch"; $data1[$i]),
-            "--input-separater--",
+            "--input-separator--",
             process_json("merge branch"; $data2[$i]),
             "--diff-cmd-separator--"' \
-          | ./create_diff "--input-separater--" "--diff-cmd-separator--" "$diff_dir/$DISTILLED_DIFF_FILE"
+          | ./create_diff "--input-separator--" "--diff-cmd-separator--" "$diff_dir/$DISTILLED_DIFF_FILE"
 
       - name: Upload diff(s)
         uses: actions/upload-artifact@v3
