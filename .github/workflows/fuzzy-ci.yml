@@ -317,9 +317,31 @@ jobs:
         id: approved_diff
         run: |
           msg_start=$(head -c 50 .github/fuzzy-ci-helpers/msg.txt)
-          # FIXME: This will give a wrong result, if the PR has more than 100 comments before the last diff approval (lack of paging)
-          body=$(curl -s "$GH_API_COMMENTS?per_page=100" | jq --arg msg_start "$msg_start" 'map(select((.body | startswith($msg_start)) and .user.login == "github-actions[bot]")) | max_by(.'created_by') | .body')
-          hash=$(echo "$body" | jq -r | grep '256-sha' | awk '{print $NF}')
+
+          next_page_endpoint="$GH_API_COMMENTS?per_page=100&page=1"
+          latest_comment="{}"
+
+          while [ -n "$next_page_endpoint" ]; do
+            latest_comment=$(
+              curl -s -D "headers.txt" -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "$next_page_endpoint" |
+              jq --arg msg_start "$msg_start" --argjson latest "{}" '
+                map(
+                  select(
+                    (.body | startswith($msg_start)) and .user.login == "github-actions[bot]"
+                  )
+                ) + [$latest] | max_by(.created_at)'
+            )
+
+            next_page_endpoint=$(
+              rg '^link:' headers.txt |
+              tr ',' '\n' |
+              rg 'rel="next"' |
+              cut -d'<' -f2 |
+              cut -d'>' -f1
+            )
+          done
+
+          hash=$(echo "$latest_comment" | jq '.body' -r | grep '256-sha' | awk '{print $NF}')
           echo "hash='$hash'" | tee -a $GITHUB_OUTPUT
 
       - name: Analyze current diff
