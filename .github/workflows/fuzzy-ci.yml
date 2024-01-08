@@ -43,8 +43,10 @@ env:
   # TODO: Release merl-an and install a certain version instead of pinning it to a certain commit
   MERL_AN_SHA: 1643fb7a9958379fb4ed8d7c5169146aaa88f5b7
 
-  # The compiler version used on master. It also needs to form part of Irmin's build cache key. Bump this on other branches and whenever the compiler version on master is bumped.
-  COMPILER_VERSION: ocaml-base-compiler.4.14.1
+  # The compiler version used on the respective branches. It also needs to form part of Irmin's build cache key.
+  # Bump either of these whenever the compiler version is bumped on either of the two branches.
+  merge_branch_COMPILER_VERSION: ocaml-base-compiler.4.14.1
+  base_branch_COMPILER_VERSION: ocaml-base-compiler.4.14.1
 
 jobs:
   data:
@@ -78,10 +80,16 @@ jobs:
         echo "Check out $sha"
         git checkout $sha
 
+    - name: Get desired compiler version
+      id: compiler
+      run: |
+        v=$${{ matrix.commit }}_COMPILER_VERSION
+        echo "version=$v" | tee -a $GITHUB_OUTPUT
+
     - name: Install OCaml
       uses: ocaml/setup-ocaml@v2
       with:
-        ocaml-compiler: ${{ env.COMPILER_VERSION }}
+        ocaml-compiler: ${{ steps.compiler.outputs.version }}
         dune-cache: true
 
     - name: Install merlin dependencies
@@ -101,7 +109,7 @@ jobs:
       id: irmin-cache
       with:
         path: irmin/
-        key: os${{ runner.os }}+arch${{ runner.arch }}+${{ hashFiles('fuzzy-ci-helpers/irmin.3.9.0.opam.locked') }}+${{ env.IRMIN_VERSION }}+${{ env.COMPILER_VERSION }}
+        key: os${{ runner.os }}+arch${{ runner.arch }}+${{ hashFiles('fuzzy-ci-helpers/irmin.3.9.0.opam.locked') }}+${{ env.IRMIN_VERSION }}+${{ steps.compiler.outputs.version }}
 
     - name: Download Irmin tarball
       if: steps.irmin-cache.outputs.cache-hit != 'true'
