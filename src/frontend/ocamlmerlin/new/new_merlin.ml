@@ -42,7 +42,7 @@ let commands_help () =
     ) New_commands.all_commands
 
 let run =
-  let query_num = ref (-1) in
+  let query_num = ref (0) in
   function
   | [] ->
     usage ();
