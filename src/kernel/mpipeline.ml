@@ -4,8 +4,9 @@ let {Logger. log} = Logger.for_section "Pipeline"
 
 let time_shift = ref 0.0
 
-let timed_lazy r x =
-  lazy (
+
+let timed r x =
+   (
     let start = Misc.time_spent () in
     let time_shift0 = !time_shift in
     let update () =
@@ -64,7 +65,7 @@ end
 
 module Typer = struct
   type t = {
-    errors : exn list lazy_t;
+    errors : exn list;
     result : Mtyper.result;
   }
 end
@@ -89,10 +90,10 @@ type t = {
   config : Mconfig.t;
   state  : Mocaml.typer_state;
   raw_source : Msource.t;
-  source : (Msource.t * Mreader.parsetree option) lazy_t;
-  reader : Reader.t lazy_t;
-  ppx    : Ppx.t lazy_t;
-  typer  : Typer.t lazy_t;
+  source : (Msource.t * Mreader.parsetree option);
+  reader : Reader.t;
+  ppx    : Ppx.t;
+  typer  : Typer.t;
 
   pp_time     : float ref;
   reader_time : float ref;
@@ -104,7 +105,7 @@ type t = {
 let raw_source t = t.raw_source
 
 let input_config t = t.config
-let input_source t = fst (Lazy.force t.source)
+let input_source t = fst t.source
 
 let with_pipeline t f =
   Mocaml.with_state t.state @@ fun () ->
@@ -114,10 +115,7 @@ let get_lexing_pos t pos =
   Msource.get_lexing_pos
     (input_source t) ~filename:(Mconfig.filename t.config) pos
 
-let reader t = Lazy.force t.reader
-
-let ppx    t = Lazy.force t.ppx
-let typer  t = Lazy.force t.typer
+let reader t = t.reader
 
 let reader_config t = (reader t).config
 let reader_parsetree t = (reader t).result.Mreader.parsetree
@@ -129,13 +127,13 @@ let reader_parser_errors t = (reader t).result.Mreader.parser_errors
 let reader_no_labels_for_completion t =
   (reader t).result.Mreader.no_labels_for_completion
 
-let ppx_parsetree t = (ppx t).Ppx.parsetree
-let ppx_errors    t = (ppx t).Ppx.errors
+let ppx_parsetree t = t.ppx.parsetree
+let ppx_errors    t = t.ppx.errors
 
-let final_config  t = (ppx t).Ppx.config
+let final_config  t = t.ppx.config
 
-let typer_result t = (typer t).Typer.result
-let typer_errors t = Lazy.force (typer t).Typer.errors
+let typer_result t = t.typer.result
+let typer_errors t = t.typer.errors
 
 module Reader_phase = struct
   type t = {
@@ -237,7 +235,7 @@ let process
     | None -> Cache.get config
     | Some state -> state
   in
-  let source = timed_lazy pp_time (lazy (
+  let source = timed pp_time (lazy (
       match Mconfig.(config.ocaml.pp) with
       | None -> raw_source, None
       | Some { workdir; workval } ->
@@ -252,9 +250,9 @@ let process
           raw_source, Some ast
     )) in
   let reader =
-    timed_lazy reader_time
+    timed reader_time
       (lazy
-        (let (lazy ((_, pp_result) as source)) = source in
+        (let (_, pp_result) = source in
           let config = Mconfig.normalize config in
           Mocaml.setup_reader_config config;
           let cache_disabling =
@@ -276,8 +274,8 @@ let process
           in
           { Reader.result; config; cache_version }
     )) in
-  let ppx = timed_lazy ppx_time (lazy (
-      let (lazy {
+  let ppx = timed ppx_time (lazy (
+      let ({
             Reader.result = { Mreader.parsetree; _ };
             config;
             cache_version;
@@ -299,11 +297,11 @@ let process
       in
       { Ppx.config; parsetree; errors = !caught }
     )) in
-  let typer = timed_lazy typer_time (lazy (
-      let lazy { Ppx. config; parsetree; _ } = ppx in
+  let typer = timed typer_time ( lazy (
+      let { Ppx. config; parsetree; _ } = ppx in
       Mocaml.setup_typer_config config;
       let result = Mtyper.run config parsetree in
-      let errors = timed_lazy error_time (lazy (Mtyper.get_errors result)) in
+      let errors = timed error_time (lazy (Mtyper.get_errors result)) in
       { Typer. errors; result }
     )) in
   { config; state; raw_source; source; reader; ppx; typer;
