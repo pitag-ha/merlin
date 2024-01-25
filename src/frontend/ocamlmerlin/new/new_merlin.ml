@@ -2,6 +2,57 @@
 
 let {Logger. log} = Logger.for_section "New_merlin"
 
+module Bg = struct
+  type t = { pipeline : Mpipeline.t; file : string}
+
+  type my_type = { config : Mconfig.t ; source : Msource.t ; file : string }
+
+  let is_running = Atomic.make false
+  let pipeline : t option Atomic.t = Atomic.make None
+
+  let rec access_pipeline () =
+    match Atomic.get pipeline with
+    | Some {pipeline; file = _} -> pipeline
+    | None -> Domain.cpu_relax (); access_pipeline ()
+
+  let state_should_update : my_type option Atomic.t = Atomic.make None
+
+  (* This is to be called from the main domain *)
+  let update_my_type file config source =
+    Atomic.set state_should_update (Some { config; source; file })
+
+  (* TODO: Improve function name *)
+  (* This is to be called from the main domain *)
+  let check_invalidation filename =
+    match Atomic.get pipeline with
+    | Some { file; _ } when file = filename ->
+      Atomic.set pipeline None
+    | _ -> ()
+
+    (* This is to be called from the state domain *)
+  let recompute_state file config source =
+    let new_pipeline = Mpipeline.make config source in
+    Atomic.set pipeline (Some { pipeline = new_pipeline; file })
+
+  let state_domain_main () =
+    let rec loop () =
+      match Atomic.get state_should_update with
+      | None -> Unix.sleepf 0.05; loop ()
+      | Some { config; source; file } ->
+        recompute_state file config source;
+        Atomic.set state_should_update None;
+        loop ()
+      in loop ()
+
+  (* let get_pipeline config source =
+    match Atomic.get pipeline with
+    | None ->
+    if Atomic.get is_running = false then
+      run_bg_domain  *)
+
+
+end
+
 let usage () =
   prerr_endline
     "Usage: ocamlmerlin command [options] -- [compiler flags]\n\
