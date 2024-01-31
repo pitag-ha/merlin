@@ -3,9 +3,9 @@
 let {Logger. log} = Logger.for_section "New_merlin"
 
 module Bg = struct
-  type t = { pipeline : Mpipeline.t; file : string}
+  type t = { pipeline : Mpipeline.t; file : string option}
 
-  type my_type = { config : Mconfig.t ; source : Msource.t ; file : string }
+  type my_type = { config : Mconfig.t ; source : Msource.t ; file : string option }
 
   let is_running = Atomic.make false
   let pipeline : t option Atomic.t = Atomic.make None
@@ -15,17 +15,18 @@ module Bg = struct
     | Some {pipeline; file = _} -> pipeline
     | None -> Domain.cpu_relax (); access_pipeline ()
 
-  let state_should_update : my_type option Atomic.t = Atomic.make None
+  let state : my_type option Atomic.t = Atomic.make None
 
   (* This is to be called from the main domain *)
   let update_my_type file config source =
-    Atomic.set state_should_update (Some { config; source; file })
+    Atomic.set state (Some { config; source; file })
 
   (* TODO: Improve function name *)
   (* This is to be called from the main domain *)
   let check_invalidation filename =
     match Atomic.get pipeline with
-    | Some { file; _ } when file = filename ->
+    | Some { file = None; _ } -> Atomic.set pipeline None
+    | Some { file = Some file ; _ } when file != filename ->
       Atomic.set pipeline None
     | _ -> ()
 
@@ -36,11 +37,11 @@ module Bg = struct
 
   let state_domain_main () =
     let rec loop () =
-      match Atomic.get state_should_update with
+      match Atomic.get state with
       | None -> Unix.sleepf 0.05; loop ()
       | Some { config; source; file } ->
         recompute_state file config source;
-        Atomic.set state_should_update None;
+        Atomic.set state None;
         loop ()
       in loop ()
 
@@ -139,6 +140,10 @@ let run = function
           in
           config, command_args
         in
+        (* TODO: check if this is correct. *)
+        (* We're assuming: If `-filename` is passed, then `file` will be the passed argument, else it will be `*buffer*`. *)
+        let file = Mconfig.filename config in
+        Bg.check_invalidation file; 
         (* Start processing query *)
         Logger.with_log_file Mconfig.(config.merlin.log_file)
           ~sections:Mconfig.(config.merlin.log_sections) @@ fun () ->

@@ -65,6 +65,7 @@ module Server = struct
     | None ->
       Logger.log ~section:"server" ~title:"cannot setup listener" ""
     | Some server ->
+      let _d = Domain.spawn New_merlin.Bg.state_domain_main in
       loop (File_id.get Sys.executable_name) server;
       Os_ipc.server_close server
 end
