@@ -26,3 +26,8 @@ val typer_result : t -> Mtyper.result
 val typer_errors : t -> exn list
 
 val timing_information : t -> (string * float) list
+
+module With_cache : sig
+    val get_pipeline : string option -> Mconfig.t -> Msource.t -> t
+    val bg_domain_main : unit -> unit
+end

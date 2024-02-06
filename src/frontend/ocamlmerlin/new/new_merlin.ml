@@ -2,58 +2,6 @@
 
 let {Logger. log} = Logger.for_section "New_merlin"
 
-module Bg = struct
-  type t = { pipeline : Mpipeline.t; file : string option}
-
-  type my_type = { config : Mconfig.t ; source : Msource.t ; file : string option }
-
-  let is_running = Atomic.make false
-  let pipeline : t option Atomic.t = Atomic.make None
-
-  let rec access_pipeline () =
-    match Atomic.get pipeline with
-    | Some {pipeline; file = _} -> pipeline
-    | None -> Domain.cpu_relax (); access_pipeline ()
-
-  let state : my_type option Atomic.t = Atomic.make None
-
-  (* This is to be called from the main domain *)
-  let update_my_type file config source =
-    Atomic.set state (Some { config; source; file })
-
-  (* TODO: Improve function name *)
-  (* This is to be called from the main domain *)
-  let check_invalidation filename =
-    match Atomic.get pipeline with
-    | Some { file = None; _ } -> Atomic.set pipeline None
-    | Some { file = Some file ; _ } when file != filename ->
-      Atomic.set pipeline None
-    | _ -> ()
-
-    (* This is to be called from the state domain *)
-  let recompute_state file config source =
-    let new_pipeline = Mpipeline.make config source in
-    Atomic.set pipeline (Some { pipeline = new_pipeline; file })
-
-  let state_domain_main () =
-    let rec loop () =
-      match Atomic.get state with
-      | None -> Unix.sleepf 0.05; loop ()
-      | Some { config; source; file } ->
-        recompute_state file config source;
-        Atomic.set state None;
-        loop ()
-      in loop ()
-
-  (* let get_pipeline config source =
-    match Atomic.get pipeline with
-    | None ->
-    if Atomic.get is_running = false then
-      run_bg_domain  *)
-
-
-end
-
 let usage () =
   prerr_endline
     "Usage: ocamlmerlin command [options] -- [compiler flags]\n\
@@ -140,10 +88,6 @@ let run = function
           in
           config, command_args
         in
-        (* TODO: check if this is correct. *)
-        (* We're assuming: If `-filename` is passed, then `file` will be the passed argument, else it will be `*buffer*`. *)
-        let file = Mconfig.filename config in
-        Bg.check_invalidation file; 
         (* Start processing query *)
         Logger.with_log_file Mconfig.(config.merlin.log_file)
           ~sections:Mconfig.(config.merlin.log_sections) @@ fun () ->
@@ -151,7 +95,8 @@ let run = function
           ~older_than:(float_of_int (60 * Mconfig.(config.merlin.cache_lifespan))) ();
         File_id.with_cache @@ fun () ->
         let source = Msource.make (Misc.string_of_file stdin) in
-        let pipeline = Mpipeline.make config source in
+        let file = config.Mconfig.query.filename in
+        let pipeline = Mpipeline.With_cache.get_pipeline file config source in
         let json =
           let class_, message =
             Printexc.record_backtrace true;

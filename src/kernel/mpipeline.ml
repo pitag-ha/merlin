@@ -242,7 +242,7 @@ let process
         let source = Msource.text raw_source in
         match
           Pparse.apply_pp
-            ~workdir ~filename:Mconfig.(config.query.filename)
+            ~workdir ~filename:Mconfig.(query_filename config.query)
             ~source ~pp:workval
         with
         | `Source source -> Msource.make source, None
@@ -323,3 +323,54 @@ let timing_information t = [
   "typer"  , !(t.typer_time);
   "error"  , !(t.error_time);
 ]
+
+module With_cache = struct
+  (* Info shared from background domain to main domain *)
+  type nonrec t = { pipeline : t; file : string }
+
+  (* Info shared from main domain to background domain *)
+  type input = { config : Mconfig.t; source : Msource.t; file : string }
+
+  let cache : t option Atomic.t = Atomic.make None
+  let input : input option Atomic.t = Atomic.make None
+
+  let trigger_pipeline file config source =
+    Atomic.set input (Some { config; source; file })
+
+  let check_and_invalidate filename =
+    match Atomic.get cache with
+    | None -> ()
+    | Some { file; _ } ->
+        if String.equal file filename then () else Atomic.set cache None
+
+  (* TODO: Suspend when accesing pipeline content, not here. *)
+  let get_pipeline file config source =
+    match file with
+    | Some file ->
+        check_and_invalidate file;
+        trigger_pipeline file config source;
+        let rec loop () =
+          match Atomic.get cache with
+          | Some { pipeline; file = _ } -> pipeline
+          | None ->
+              Domain.cpu_relax ();
+              loop ()
+        in
+        loop ()
+    | None -> make config source
+
+  let bg_domain_main () =
+    let rec loop () =
+      match Atomic.get input with
+      | None ->
+          Unix.sleepf 0.05;
+          loop ()
+      | Some { config; source; file } ->
+          (* Note: This takes a while *)
+          let new_pipeline = make config source in
+          Atomic.set cache (Some { pipeline = new_pipeline; file });
+          Atomic.set input None;
+          loop ()
+    in
+    loop ()
+end

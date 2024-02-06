@@ -56,7 +56,7 @@ val dump_merlin : merlin -> json
 
 (** {1 Some flags affecting queries} *)
 
-module Verbosity : sig 
+module Verbosity : sig
   type t = Smart | Lvl of int
 
   (** the default value for verbosity, i.e., [Lvl 0] *)
@@ -70,11 +70,13 @@ module Verbosity : sig
 end
 
 type query = {
-  filename  : string;
+  filename  : string option;
   directory : string;
   printer_width : int;
   verbosity : Verbosity.t;
 }
+
+val query_filename : query -> string
 
 (** {1 Main configuration} *)
 

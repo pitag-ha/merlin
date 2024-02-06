@@ -92,7 +92,7 @@ let configure (state : buffer) =
       | Some path -> {
           config.Mconfig.query with
           Mconfig.
-          filename = Filename.basename path;
+          filename = Some (Filename.basename path);
           directory = Misc.canonicalize_filename (Filename.dirname path);
         }
     } in

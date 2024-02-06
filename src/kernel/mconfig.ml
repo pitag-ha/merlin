@@ -158,14 +158,18 @@ module Verbosity = struct
 end
 
 type query = {
-  filename  : string;
+  filename  : string option;
   directory : string;
   printer_width : int;
   verbosity : Verbosity.t;
 }
 
+let query_filename q = match q.filename with
+  | None -> "*buffer*"
+  | Some filename -> filename
+
 let dump_query x = `Assoc [
-    "filename"  , `String x.filename;
+    "filename"  , `String (query_filename x);
     "directory" , `String x.directory;
     "printer_width", `Int x.printer_width;
     "verbosity" , Verbosity.to_json x.verbosity;
@@ -629,7 +633,7 @@ let initial = {
     cache_lifespan = 5;
   };
   query = {
-    filename = "*buffer*";
+    filename = None;
     directory = Sys.getcwd ();
     verbosity = Verbosity.default;
     printer_width = 0;
@@ -646,7 +650,7 @@ let global_flags = [
     marg_path (fun path t ->
         let query = t.query in
         let path = Misc.canonicalize_filename path in
-        let filename = Filename.basename path in
+        let filename = Some (Filename.basename path) in
         let directory = Filename.dirname path in
         let t = {t with query = {query with filename; directory}} in
         Logger.with_log_file t.merlin.log_file
@@ -773,14 +777,16 @@ let cmt_path config = (
 
 let global_modules ?(include_current=false) config = (
   let modules = Misc.modules_in_path ~ext:".cmi" (build_path config) in
+  (* TODO: What's the deal here? Shouldn't it check for "*buffer*" instead of ""? In that case, match on the option *)
   if include_current then modules
-  else match config.query.filename with
+  else match query_filename config.query with
     | "" -> modules
     | filename -> List.remove (Misc.unitname filename) modules
 )
 
 (** {1 Accessors for other information} *)
 
-let filename t = t.query.filename
+let filename t =
+  query_filename t.query
 
-let unitname t = Misc.unitname t.query.filename
+let unitname t = Misc.unitname @@ filename t
