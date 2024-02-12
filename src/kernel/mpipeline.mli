@@ -1,6 +1,6 @@
 type t
 val make : Mconfig.t -> Msource.t -> t
-val with_pipeline : t -> (unit -> 'a) -> 'a
+
 val for_completion : Msource.position -> t -> t
 
 val raw_source : t -> Msource.t
@@ -28,6 +28,12 @@ val typer_errors : t -> exn list
 val timing_information : t -> (string * float) list
 
 module With_cache : sig
-    val get_pipeline : string option -> Mconfig.t -> Msource.t -> t
-    val bg_domain_main : unit -> unit
+    type pipeline
+    type t
+    type cache
+
+    val get_pipeline : string option -> Mconfig.t -> Msource.t -> pipeline
+    val init : unit -> t
+    val shutdown : t -> unit
 end
+with type pipeline := t

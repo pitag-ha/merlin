@@ -97,11 +97,13 @@ let run = function
         let source = Msource.make (Misc.string_of_file stdin) in
         let file = config.Mconfig.query.filename in
         let pipeline = Mpipeline.With_cache.get_pipeline file config source in
+        (* let pipeline = Mpipeline.make config source in *)
         let json =
           let class_, message =
             Printexc.record_backtrace true;
             match
-              Mpipeline.with_pipeline pipeline @@ fun () ->
+              (* No with_pipeline needed here anymore: with_pipeline makes sure the typer and reader states are locked. We do that now on Pipeline.make instead*)
+              (* Mpipeline.with_pipeline pipeline @@ fun () -> *)
               command_action pipeline command_args
             with
             | result ->

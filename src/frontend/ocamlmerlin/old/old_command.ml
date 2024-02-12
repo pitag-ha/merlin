@@ -245,7 +245,7 @@ let dispatch (type a) (context : Context.t) (cmd : a command) : a =
   match cmd with
   | Query q ->
     let pipeline = make_pipeline config state.buffer in
-    Mpipeline.with_pipeline pipeline @@ fun () ->
+    (* Mpipeline.with_pipeline pipeline @@ fun () -> *)
     Query_commands.dispatch pipeline q
   | Sync (Checkout context) when state == Lazy.force default_state ->
     let buffer = checkout_buffer context in

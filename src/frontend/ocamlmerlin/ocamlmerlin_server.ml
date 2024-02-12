@@ -14,13 +14,7 @@ module Server = struct
     | "stop-server" :: _ -> raise Exit
     | args -> New_merlin.run ~new_env:(Some environ) (Some wd) args
 
-  let process_client client =
-    let context = client.Os_ipc.context in
-    Os_ipc.context_setup context;
-    let close_with return_code =
-      flush_all ();
-      Os_ipc.context_close context ~return_code
-    in
+  let process_client ~close_with client =
     match process_request client with
     | code -> close_with code
     | exception Exit ->
@@ -47,26 +41,42 @@ module Server = struct
     | Some _ as result -> result
     | None -> loop 1.0
 
-  let rec loop merlinid server =
+  let rec loop ?(is_starting=false) ~pipeline_cache merlinid server =
     match server_accept merlinid server with
     | None -> (* Timeout *)
       ()
     | Some client ->
-      let continue =
-        match process_client client with
-        | exception Exit -> false
-        | () -> true
+      (* If we don't setup the context before initing the pipeline cache, then there's a data race between any logging done on the Mpipeline.With_cache domain and the context setup. *)
+      let context = client.Os_ipc.context in
+      Os_ipc.context_setup context;
+      let pipeline_cache =
+        if is_starting then
+          Some (Mpipeline.With_cache.init ())
+        else pipeline_cache
       in
-      if continue then loop merlinid server
+      let close_with return_code =
+        flush_all ();
+        Os_ipc.context_close context ~return_code
+      in
+      let continue =
+          match process_client ~close_with client with
+          | exception Exit -> false
+          | () -> if is_starting then false else true
+      in
+      if continue then loop ~pipeline_cache merlinid server
+      else
+        match pipeline_cache with
+        | None -> ()
+        | Some cache ->
+          Mpipeline.With_cache.shutdown cache
 
   let start socket_path socket_fd =
     match Os_ipc.server_setup socket_path socket_fd with
     | None ->
       Logger.log ~section:"server" ~title:"cannot setup listener" ""
     | Some server ->
-      let _d = Domain.spawn Mpipeline.With_cache.bg_domain_main in
-      loop (File_id.get Sys.executable_name) server;
-      Os_ipc.server_close server
+        ignore @@ loop ~is_starting:true ~pipeline_cache:None (File_id.get Sys.executable_name) server;
+        Os_ipc.server_close server
 end
 
 let main () =

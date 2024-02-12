@@ -107,9 +107,6 @@ let raw_source t = t.raw_source
 let input_config t = t.config
 let input_source t = fst t.source
 
-let with_pipeline t f =
-  Mocaml.with_state t.state @@ fun () ->
-  Mreader.with_ambient_reader t.config (input_source t) f
 
 let get_lexing_pos t pos =
   Msource.get_lexing_pos
@@ -231,6 +228,7 @@ let process
     ?(error_time=ref 0.0)
     ?for_completion
     config raw_source =
+    (* FIXME: Should state still be optional? *)
   let state = match state with
     | None -> Cache.get config
     | Some state -> state
@@ -308,7 +306,10 @@ let process
     pp_time; reader_time; ppx_time; typer_time; error_time }
 
 let make config source =
-  process (Mconfig.normalize config) source
+  let state = Cache.get config in
+  Mocaml.with_state state @@ fun () ->
+  Mreader.with_ambient_reader config source @@ fun () ->
+  process ~state (Mconfig.normalize config) source
 
 let for_completion position
     {config; state; raw_source;
@@ -326,13 +327,18 @@ let timing_information t = [
 
 module With_cache = struct
   (* Info shared from background domain to main domain *)
-  type nonrec t = { pipeline : t; file : string }
+  type nonrec cache = { pipeline : t; file : string }
+
+  type t = unit Domain.t
+
 
   (* Info shared from main domain to background domain *)
   type input = { config : Mconfig.t; source : Msource.t; file : string }
 
-  let cache : t option Atomic.t = Atomic.make None
+  let cache : cache option Atomic.t = Atomic.make None
   let input : input option Atomic.t = Atomic.make None
+  let shut_down : bool Atomic.t = Atomic.make false
+
 
   let trigger_pipeline file config source =
     Atomic.set input (Some { config; source; file })
@@ -361,6 +367,7 @@ module With_cache = struct
 
   let bg_domain_main () =
     let rec loop () =
+      if Atomic.get shut_down then () else
       match Atomic.get input with
       | None ->
           Unix.sleepf 0.05;
@@ -373,4 +380,11 @@ module With_cache = struct
           loop ()
     in
     loop ()
+
+    let init () =
+      Domain.spawn bg_domain_main
+
+    let shutdown t =
+      Atomic.set shut_down true;
+      Domain.join t;
 end
