@@ -41,7 +41,7 @@ let commands_help () =
       print_endline doc
     ) New_commands.all_commands
 
-let run = function
+let run ~get_pipeline = function
   | [] ->
     usage ();
     1
@@ -96,7 +96,12 @@ let run = function
         File_id.with_cache @@ fun () ->
         let source = Msource.make (Misc.string_of_file stdin) in
         let file = config.Mconfig.query.filename in
-        let pipeline = Mpipeline.With_cache.get_pipeline file config source in
+        let pipeline =
+          match get_pipeline file config source with
+          | None ->
+            failwith "Why on earth is the pipeline domain down?"
+          | Some p -> p
+        in
         (* let pipeline = Mpipeline.make config source in *)
         let json =
           let class_, message =
@@ -162,7 +167,7 @@ let with_wd ~wd ~old_wd f args =
       wd old_wd;
     f args
 
-let run ~new_env wd args =
+let run ~get_pipeline ~new_env wd args =
   begin match new_env with
   | Some env ->
     Os_ipc.merlin_set_environ env;
@@ -170,10 +175,10 @@ let run ~new_env wd args =
   | None -> () end;
   let old_wd = Sys.getcwd () in
   let run args () = match wd with
-    | Some wd -> with_wd ~wd ~old_wd run args
+    | Some wd -> with_wd ~wd ~old_wd (run ~get_pipeline) args
     | None ->
       log ~title:"run" "No working directory specified (old wd: %S)" old_wd;
-      run args
+      run ~get_pipeline args
   in
   let `Log_file_path log_file, `Log_sections sections =
     Log_info.get ()

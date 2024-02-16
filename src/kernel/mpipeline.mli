@@ -27,13 +27,4 @@ val typer_errors : t -> exn list
 
 val timing_information : t -> (string * float) list
 
-module With_cache : sig
-    type pipeline
-    type t
-    type cache
-
-    val get_pipeline : string option -> Mconfig.t -> Msource.t -> pipeline
-    val init : unit -> t
-    val shutdown : t -> unit
-end
-with type pipeline := t
+val make_with_cache : (get_pipeline: (string option -> Mconfig.t -> Msource.t -> t option) -> unit) -> unit

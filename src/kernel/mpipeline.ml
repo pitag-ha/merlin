@@ -329,16 +329,13 @@ module With_cache = struct
   (* Info shared from background domain to main domain *)
   type nonrec cache = { pipeline : t; file : string }
 
-  type t = unit Domain.t
-
-
   (* Info shared from main domain to background domain *)
   type input = { config : Mconfig.t; source : Msource.t; file : string }
 
   let cache : cache option Atomic.t = Atomic.make None
   let input : input option Atomic.t = Atomic.make None
   let shut_down : bool Atomic.t = Atomic.make false
-
+  let domain_is_up : bool Atomic.t = Atomic.make false
 
   let trigger_pipeline file config source =
     Atomic.set input (Some { config; source; file })
@@ -357,13 +354,16 @@ module With_cache = struct
         trigger_pipeline file config source;
         let rec loop () =
           match Atomic.get cache with
-          | Some { pipeline; file = _ } -> pipeline
+          | Some { pipeline; file = _ } -> Some pipeline
           | None ->
-              Domain.cpu_relax ();
-              loop ()
+              if Atomic.get domain_is_up then None else
+              begin
+                Domain.cpu_relax ();
+                loop ()
+              end
         in
         loop ()
-    | None -> make config source
+    | None -> Some (make config source)
 
   let bg_domain_main () =
     let rec loop () =
@@ -382,9 +382,17 @@ module With_cache = struct
     loop ()
 
     let init () =
-      Domain.spawn bg_domain_main
+      let d = Domain.spawn bg_domain_main in
+      Atomic.set domain_is_up true;
+      d
 
     let shutdown t =
       Atomic.set shut_down true;
       Domain.join t;
+      Atomic.set domain_is_up false
 end
+
+let make_with_cache loop =
+  let d = With_cache.init () in
+  loop ~get_pipeline:(With_cache.get_pipeline);
+  With_cache.shutdown d
