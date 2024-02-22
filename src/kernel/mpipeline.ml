@@ -356,7 +356,7 @@ module With_cache = struct
           match Atomic.get cache with
           | Some { pipeline; file = _ } -> Some pipeline
           | None ->
-              if Atomic.get domain_is_up then None else
+              if not (Atomic.get domain_is_up) then None else
               begin
                 Domain.cpu_relax ();
                 loop ()
@@ -370,10 +370,9 @@ module With_cache = struct
       if Atomic.get shut_down then () else
       match Atomic.get input with
       | None ->
-          Unix.sleepf 0.05;
+          Domain.cpu_relax ();
           loop ()
       | Some { config; source; file } ->
-          (* Note: This takes a while *)
           let new_pipeline = make config source in
           Atomic.set cache (Some { pipeline = new_pipeline; file });
           Atomic.set input None;
